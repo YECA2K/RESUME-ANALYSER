@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # All-in-One: API + Mongo + Airflow + JobSpy (no front)
 
 ## 1) Démarrer toute la stack
@@ -39,3 +40,7 @@ curl "http://localhost:8000/match?job_title=Data%20Engineer&k=10"
 - JobSpy est inclus côté API (requirements).
 - Airflow exécute les scripts montés via `/workspace/scripts`.
 - Si tu changes l'URL de l'API, adapte `API_URL` dans le DAG.
+=======
+# RESUME-ANALYSER
+RESUME-ANALYSER
+>>>>>>> 4abcca27d994b246294688ffed085d743c77aa5f
