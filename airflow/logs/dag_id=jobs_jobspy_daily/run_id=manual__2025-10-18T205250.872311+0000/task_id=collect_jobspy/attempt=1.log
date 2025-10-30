@@ -1,0 +1,43 @@
+[2025-10-18T20:52:51.567+0000] {local_task_job_runner.py:120} INFO - ::group::Pre task execution logs
+[2025-10-18T20:52:51.636+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-18T20:52:50.872311+00:00 [queued]>
+[2025-10-18T20:52:51.650+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-18T20:52:50.872311+00:00 [queued]>
+[2025-10-18T20:52:51.651+0000] {taskinstance.py:2306} INFO - Starting attempt 1 of 1
+[2025-10-18T20:52:51.681+0000] {taskinstance.py:2330} INFO - Executing <Task(BashOperator): collect_jobspy> on 2025-10-18 20:52:50.872311+00:00
+[2025-10-18T20:52:51.692+0000] {logging_mixin.py:188} WARNING - /home/***/.local/lib/python3.12/site-packages/***/task/task_runner/standard_task_runner.py:62 DeprecationWarning: This process (pid=3018) is multi-threaded, use of fork() may lead to deadlocks in the child.
+[2025-10-18T20:52:51.691+0000] {standard_task_runner.py:90} INFO - Running: ['***', 'tasks', 'run', 'jobs_jobspy_daily', 'collect_jobspy', 'manual__2025-10-18T20:52:50.872311+00:00', '--job-id', '78', '--raw', '--subdir', 'DAGS_FOLDER/jobs_jobspy_daily.py', '--cfg-path', '/tmp/tmpro77b9ed']
+[2025-10-18T20:52:51.694+0000] {standard_task_runner.py:64} INFO - Started process 3019 to run task
+[2025-10-18T20:52:51.694+0000] {standard_task_runner.py:91} INFO - Job 78: Subtask collect_jobspy
+[2025-10-18T20:52:51.783+0000] {task_command.py:426} INFO - Running <TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-18T20:52:50.872311+00:00 [running]> on host 68cd41389e54
+[2025-10-18T20:52:51.968+0000] {taskinstance.py:2648} INFO - Exporting env vars: AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='jobs_jobspy_daily' AIRFLOW_CTX_TASK_ID='collect_jobspy' AIRFLOW_CTX_EXECUTION_DATE='2025-10-18T20:52:50.872311+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='manual__2025-10-18T20:52:50.872311+00:00'
+[2025-10-18T20:52:51.969+0000] {taskinstance.py:430} INFO - ::endgroup::
+[2025-10-18T20:52:52.022+0000] {subprocess.py:63} INFO - Tmp dir root location: /tmp
+[2025-10-18T20:52:52.024+0000] {subprocess.py:75} INFO - Running command: ['/usr/bin/bash', '-c', "python -u /workspace/scripts/jobspy_collect.py --queries 'Data Engineer,Data Scientist,ML Engineer,DevOps Engineer,Data Analyst' --locations 'France,Remote,Paris,Lyon' --sites indeed --pages 8 --days 15 --outfile jobspy_all_20251018.jsonl"]
+[2025-10-18T20:52:52.044+0000] {subprocess.py:86} INFO - Output:
+[2025-10-18T20:53:03.200+0000] {subprocess.py:93} INFO - [OK] 400 rows from indeed for Data Engineer @ France
+[2025-10-18T20:53:04.000+0000] {subprocess.py:93} INFO - [OK] 17 rows from indeed for Data Engineer @ Remote
+[2025-10-18T20:53:12.650+0000] {subprocess.py:93} INFO - [OK] 365 rows from indeed for Data Engineer @ Paris
+[2025-10-18T20:53:14.138+0000] {subprocess.py:93} INFO - [OK] 38 rows from indeed for Data Engineer @ Lyon
+[2025-10-18T20:53:21.854+0000] {subprocess.py:93} INFO - [OK] 339 rows from indeed for Data Scientist @ France
+[2025-10-18T20:53:22.357+0000] {subprocess.py:93} INFO - [OK] 2 rows from indeed for Data Scientist @ Remote
+[2025-10-18T20:53:27.256+0000] {subprocess.py:93} INFO - [OK] 190 rows from indeed for Data Scientist @ Paris
+[2025-10-18T20:53:28.140+0000] {subprocess.py:93} INFO - [OK] 23 rows from indeed for Data Scientist @ Lyon
+[2025-10-18T20:53:32.682+0000] {subprocess.py:93} INFO - [OK] 156 rows from indeed for ML Engineer @ France
+[2025-10-18T20:53:33.263+0000] {subprocess.py:93} INFO - [OK] 1 rows from indeed for ML Engineer @ Remote
+[2025-10-18T20:53:35.932+0000] {subprocess.py:93} INFO - [OK] 75 rows from indeed for ML Engineer @ Paris
+[2025-10-18T20:53:36.652+0000] {subprocess.py:93} INFO - [OK] 7 rows from indeed for ML Engineer @ Lyon
+[2025-10-18T20:53:41.688+0000] {subprocess.py:93} INFO - [OK] 170 rows from indeed for DevOps Engineer @ France
+[2025-10-18T20:53:42.279+0000] {subprocess.py:93} INFO - [OK] 5 rows from indeed for DevOps Engineer @ Remote
+[2025-10-18T20:53:45.109+0000] {subprocess.py:93} INFO - [OK] 99 rows from indeed for DevOps Engineer @ Paris
+[2025-10-18T20:53:45.939+0000] {subprocess.py:93} INFO - [OK] 14 rows from indeed for DevOps Engineer @ Lyon
+[2025-10-18T20:53:51.674+0000] {subprocess.py:93} INFO - [OK] 270 rows from indeed for Data Analyst @ France
+[2025-10-18T20:53:51.910+0000] {subprocess.py:93} INFO - [WARN] no rows from indeed for Data Analyst @ Remote
+[2025-10-18T20:53:56.127+0000] {subprocess.py:93} INFO - [OK] 165 rows from indeed for Data Analyst @ Paris
+[2025-10-18T20:53:56.818+0000] {subprocess.py:93} INFO - [OK] 17 rows from indeed for Data Analyst @ Lyon
+[2025-10-18T20:53:56.825+0000] {subprocess.py:93} INFO - [DEDUP] 2353 -> 1119 unique by job_url
+[2025-10-18T20:53:57.736+0000] {subprocess.py:93} INFO - [MERGED] 1119 rows -> /workspace/datalake/raw/jobs/jobspy_all_20251018.jsonl
+[2025-10-18T20:53:58.099+0000] {subprocess.py:97} INFO - Command exited with return code 0
+[2025-10-18T20:53:58.106+0000] {taskinstance.py:441} INFO - ::group::Post task execution logs
+[2025-10-18T20:53:58.273+0000] {taskinstance.py:1206} INFO - Marking task as SUCCESS. dag_id=jobs_jobspy_daily, task_id=collect_jobspy, run_id=manual__2025-10-18T20:52:50.872311+00:00, execution_date=20251018T205250, start_date=20251018T205251, end_date=20251018T205358
+[2025-10-18T20:53:58.331+0000] {local_task_job_runner.py:243} INFO - Task exited with return code 0
+[2025-10-18T20:53:58.397+0000] {taskinstance.py:3503} INFO - 1 downstream tasks scheduled from follow-on schedule check
+[2025-10-18T20:53:58.400+0000] {local_task_job_runner.py:222} INFO - ::endgroup::

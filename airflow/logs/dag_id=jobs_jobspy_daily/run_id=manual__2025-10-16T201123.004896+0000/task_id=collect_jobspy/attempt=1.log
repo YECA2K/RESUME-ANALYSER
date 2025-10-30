@@ -1,0 +1,40 @@
+[2025-10-16T20:11:24.636+0000] {local_task_job_runner.py:120} INFO - ::group::Pre task execution logs
+[2025-10-16T20:11:24.867+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-16T20:11:23.004896+00:00 [queued]>
+[2025-10-16T20:11:24.901+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-16T20:11:23.004896+00:00 [queued]>
+[2025-10-16T20:11:24.902+0000] {taskinstance.py:2306} INFO - Starting attempt 1 of 1
+[2025-10-16T20:11:24.936+0000] {taskinstance.py:2330} INFO - Executing <Task(BashOperator): collect_jobspy> on 2025-10-16 20:11:23.004896+00:00
+[2025-10-16T20:11:24.983+0000] {logging_mixin.py:188} WARNING - /home/***/.local/lib/python3.12/site-packages/***/task/task_runner/standard_task_runner.py:62 DeprecationWarning: This process (pid=252) is multi-threaded, use of fork() may lead to deadlocks in the child.
+[2025-10-16T20:11:25.016+0000] {standard_task_runner.py:64} INFO - Started process 253 to run task
+[2025-10-16T20:11:25.004+0000] {standard_task_runner.py:90} INFO - Running: ['***', 'tasks', 'run', 'jobs_jobspy_daily', 'collect_jobspy', 'manual__2025-10-16T20:11:23.004896+00:00', '--job-id', '8', '--raw', '--subdir', 'DAGS_FOLDER/jobs_jobspy_daily.py', '--cfg-path', '/tmp/tmpxp2w_o20']
+[2025-10-16T20:11:25.213+0000] {standard_task_runner.py:91} INFO - Job 8: Subtask collect_jobspy
+[2025-10-16T20:11:25.892+0000] {task_command.py:426} INFO - Running <TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-16T20:11:23.004896+00:00 [running]> on host 633a21ed0c54
+[2025-10-16T20:11:26.798+0000] {taskinstance.py:2648} INFO - Exporting env vars: AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='jobs_jobspy_daily' AIRFLOW_CTX_TASK_ID='collect_jobspy' AIRFLOW_CTX_EXECUTION_DATE='2025-10-16T20:11:23.004896+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='manual__2025-10-16T20:11:23.004896+00:00'
+[2025-10-16T20:11:26.800+0000] {taskinstance.py:430} INFO - ::endgroup::
+[2025-10-16T20:11:26.897+0000] {subprocess.py:63} INFO - Tmp dir root location: /tmp
+[2025-10-16T20:11:26.903+0000] {subprocess.py:75} INFO - Running command: ['/usr/bin/bash', '-c', "python /workspace/scripts/jobspy_collect.py --query 'Data Engineer' --location 'France' --sites indeed,glassdoor,linkedin --pages 2 --days 7"]
+[2025-10-16T20:11:26.945+0000] {subprocess.py:86} INFO - Output:
+[2025-10-16T20:11:27.538+0000] {subprocess.py:93} INFO - Traceback (most recent call last):
+[2025-10-16T20:11:27.539+0000] {subprocess.py:93} INFO -   File "/workspace/scripts/jobspy_collect.py", line 2, in <module>
+[2025-10-16T20:11:27.543+0000] {subprocess.py:93} INFO -     from jobspy import scrape_jobs
+[2025-10-16T20:11:27.544+0000] {subprocess.py:93} INFO - ModuleNotFoundError: No module named 'jobspy'
+[2025-10-16T20:11:27.556+0000] {subprocess.py:97} INFO - Command exited with return code 1
+[2025-10-16T20:11:27.558+0000] {taskinstance.py:441} INFO - ::group::Post task execution logs
+[2025-10-16T20:11:27.603+0000] {taskinstance.py:2905} ERROR - Task failed with exception
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/taskinstance.py", line 465, in _execute_task
+    result = _execute_callable(context=context, **execute_callable_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/taskinstance.py", line 432, in _execute_callable
+    return execute_callable(context=context, **execute_callable_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/baseoperator.py", line 401, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/operators/bash.py", line 243, in execute
+    raise AirflowException(
+airflow.exceptions.AirflowException: Bash command failed. The command returned a non-zero exit code 1.
+[2025-10-16T20:11:27.644+0000] {taskinstance.py:1206} INFO - Marking task as FAILED. dag_id=jobs_jobspy_daily, task_id=collect_jobspy, run_id=manual__2025-10-16T20:11:23.004896+00:00, execution_date=20251016T201123, start_date=20251016T201124, end_date=20251016T201127
+[2025-10-16T20:11:27.688+0000] {standard_task_runner.py:110} ERROR - Failed to execute job 8 for task collect_jobspy (Bash command failed. The command returned a non-zero exit code 1.; 253)
+[2025-10-16T20:11:27.746+0000] {local_task_job_runner.py:243} INFO - Task exited with return code 1
+[2025-10-16T20:11:27.853+0000] {taskinstance.py:3503} INFO - 0 downstream tasks scheduled from follow-on schedule check
+[2025-10-16T20:11:27.877+0000] {local_task_job_runner.py:222} INFO - ::endgroup::

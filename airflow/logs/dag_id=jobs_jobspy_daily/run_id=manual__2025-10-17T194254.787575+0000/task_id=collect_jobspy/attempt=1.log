@@ -1,0 +1,97 @@
+[2025-10-17T19:42:58.056+0000] {local_task_job_runner.py:120} INFO - ::group::Pre task execution logs
+[2025-10-17T19:42:58.238+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-17T19:42:54.787575+00:00 [queued]>
+[2025-10-17T19:42:58.254+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-17T19:42:54.787575+00:00 [queued]>
+[2025-10-17T19:42:58.255+0000] {taskinstance.py:2306} INFO - Starting attempt 1 of 1
+[2025-10-17T19:42:58.283+0000] {taskinstance.py:2330} INFO - Executing <Task(BashOperator): collect_jobspy> on 2025-10-17 19:42:54.787575+00:00
+[2025-10-17T19:42:58.293+0000] {standard_task_runner.py:90} INFO - Running: ['***', 'tasks', 'run', 'jobs_jobspy_daily', 'collect_jobspy', 'manual__2025-10-17T19:42:54.787575+00:00', '--job-id', '54', '--raw', '--subdir', 'DAGS_FOLDER/jobs_jobspy_daily.py', '--cfg-path', '/tmp/tmpqrr5x0y3']
+[2025-10-17T19:42:58.297+0000] {standard_task_runner.py:91} INFO - Job 54: Subtask collect_jobspy
+[2025-10-17T19:42:58.299+0000] {logging_mixin.py:188} WARNING - /home/***/.local/lib/python3.12/site-packages/***/task/task_runner/standard_task_runner.py:62 DeprecationWarning: This process (pid=3899) is multi-threaded, use of fork() may lead to deadlocks in the child.
+[2025-10-17T19:42:58.300+0000] {standard_task_runner.py:64} INFO - Started process 3900 to run task
+[2025-10-17T19:42:58.404+0000] {task_command.py:426} INFO - Running <TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-17T19:42:54.787575+00:00 [running]> on host 68cd41389e54
+[2025-10-17T19:42:58.651+0000] {taskinstance.py:2648} INFO - Exporting env vars: AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='jobs_jobspy_daily' AIRFLOW_CTX_TASK_ID='collect_jobspy' AIRFLOW_CTX_EXECUTION_DATE='2025-10-17T19:42:54.787575+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='manual__2025-10-17T19:42:54.787575+00:00'
+[2025-10-17T19:42:58.654+0000] {taskinstance.py:430} INFO - ::endgroup::
+[2025-10-17T19:42:58.718+0000] {subprocess.py:63} INFO - Tmp dir root location: /tmp
+[2025-10-17T19:42:58.723+0000] {subprocess.py:75} INFO - Running command: ['/usr/bin/bash', '-c', "python /workspace/scripts/jobspy_collect.py --queries 'Data Engineer,Data Scientist,ML Engineer,DevOps Engineer,Backend Developer,Data Analyst' --locations 'France,Remote,Paris,Lyon' --sites indeed,glassdoor,linkedin --pages 8 --days 45 --outfile jobspy_all_{ds_nodash}.jsonl"]
+[2025-10-17T19:42:58.741+0000] {subprocess.py:86} INFO - Output:
+[2025-10-17T19:44:46.119+0000] {subprocess.py:93} INFO - 2025-10-17 19:44:46,118 - INFO - JobSpy:Linkedin - finished scraping
+[2025-10-17T20:14:39.388+0000] {subprocess.py:93} INFO - /workspace/scripts/jobspy_collect.py:51: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+[2025-10-17T20:14:39.466+0000] {subprocess.py:93} INFO -   all_df = pd.concat(parts, ignore_index=True)
+[2025-10-17T20:14:45.732+0000] {subprocess.py:93} INFO - [OK] 400 rows from indeed for Data Engineer @ France
+[2025-10-17T20:14:45.740+0000] {subprocess.py:93} INFO - [OK] 388 rows from glassdoor for Data Engineer @ France
+[2025-10-17T20:14:45.743+0000] {subprocess.py:93} INFO - [OK] 140 rows from linkedin for Data Engineer @ France
+[2025-10-17T20:14:45.748+0000] {subprocess.py:93} INFO - [OK] 27 rows from indeed for Data Engineer @ Remote
+[2025-10-17T20:14:45.752+0000] {subprocess.py:93} INFO - [OK] 253 rows from glassdoor for Data Engineer @ Remote
+[2025-10-17T20:14:45.755+0000] {subprocess.py:93} INFO - [OK] 140 rows from linkedin for Data Engineer @ Remote
+[2025-10-17T20:14:45.758+0000] {subprocess.py:93} INFO - [ERROR] indeed for Data Engineer @ Paris: HTTPSConnectionPool(host='apis.indeed.com', port=443): Read timed out. (read timeout=10)
+[2025-10-17T20:14:45.763+0000] {subprocess.py:93} INFO - [OK] 400 rows from glassdoor for Data Engineer @ Paris
+[2025-10-17T20:14:45.770+0000] {subprocess.py:93} INFO - [OK] 139 rows from linkedin for Data Engineer @ Paris
+[2025-10-17T20:14:45.773+0000] {subprocess.py:93} INFO - [OK] 71 rows from indeed for Data Engineer @ Lyon
+[2025-10-17T20:14:45.774+0000] {subprocess.py:93} INFO - [OK] 68 rows from glassdoor for Data Engineer @ Lyon
+[2025-10-17T20:14:45.778+0000] {subprocess.py:93} INFO - [OK] 59 rows from linkedin for Data Engineer @ Lyon
+[2025-10-17T20:14:45.782+0000] {subprocess.py:93} INFO - [OK] 400 rows from indeed for Data Scientist @ France
+[2025-10-17T20:14:45.783+0000] {subprocess.py:93} INFO - [OK] 379 rows from glassdoor for Data Scientist @ France
+[2025-10-17T20:14:45.787+0000] {subprocess.py:93} INFO - [OK] 140 rows from linkedin for Data Scientist @ France
+[2025-10-17T20:14:45.790+0000] {subprocess.py:93} INFO - [OK] 4 rows from indeed for Data Scientist @ Remote
+[2025-10-17T20:14:45.791+0000] {subprocess.py:93} INFO - [OK] 383 rows from glassdoor for Data Scientist @ Remote
+[2025-10-17T20:14:45.794+0000] {subprocess.py:93} INFO - [ERROR] linkedin for Data Scientist @ Remote: Invalid country string: 'el salvador'. Valid countries are: argentina, australia, austria, bahrain, bangladesh, belgium, bulgaria, brazil, canada, chile, china, colombia, costa rica, croatia, cyprus, czech republic,czechia, denmark, ecuador, egypt, estonia, finland, france, germany, greece, hong kong, hungary, india, indonesia, ireland, israel, italy, japan, kuwait, latvia, lithuania, luxembourg, malaysia, malta, mexico, morocco, netherlands, new zealand, nigeria, norway, oman, pakistan, panama, peru, philippines, poland, portugal, qatar, romania, saudi arabia, singapore, slovakia, slovenia, south africa, south korea, spain, sweden, switzerland, taiwan, thailand, türkiye,turkey, ukraine, united arab emirates, uk,united kingdom, usa,us,united states, uruguay, venezuela, vietnam, usa/ca, worldwide
+[2025-10-17T20:14:45.797+0000] {subprocess.py:93} INFO - [OK] 386 rows from indeed for Data Scientist @ Paris
+[2025-10-17T20:14:45.803+0000] {subprocess.py:93} INFO - [OK] 307 rows from glassdoor for Data Scientist @ Paris
+[2025-10-17T20:14:45.804+0000] {subprocess.py:93} INFO - [OK] 140 rows from linkedin for Data Scientist @ Paris
+[2025-10-17T20:14:45.806+0000] {subprocess.py:93} INFO - [OK] 37 rows from indeed for Data Scientist @ Lyon
+[2025-10-17T20:14:45.809+0000] {subprocess.py:93} INFO - [OK] 30 rows from glassdoor for Data Scientist @ Lyon
+[2025-10-17T20:14:45.811+0000] {subprocess.py:93} INFO - [OK] 140 rows from linkedin for Data Scientist @ Lyon
+[2025-10-17T20:14:45.814+0000] {subprocess.py:93} INFO - [OK] 297 rows from indeed for ML Engineer @ France
+[2025-10-17T20:14:45.818+0000] {subprocess.py:93} INFO - [OK] 234 rows from glassdoor for ML Engineer @ France
+[2025-10-17T20:14:45.821+0000] {subprocess.py:93} INFO - [OK] 70 rows from linkedin for ML Engineer @ France
+[2025-10-17T20:14:45.822+0000] {subprocess.py:93} INFO - [OK] 1 rows from indeed for ML Engineer @ Remote
+[2025-10-17T20:14:45.827+0000] {subprocess.py:93} INFO - [OK] 400 rows from glassdoor for ML Engineer @ Remote
+[2025-10-17T20:14:45.831+0000] {subprocess.py:93} INFO - [OK] 140 rows from linkedin for ML Engineer @ Remote
+[2025-10-17T20:14:45.832+0000] {subprocess.py:93} INFO - [OK] 146 rows from indeed for ML Engineer @ Paris
+[2025-10-17T20:14:45.834+0000] {subprocess.py:93} INFO - [OK] 113 rows from glassdoor for ML Engineer @ Paris
+[2025-10-17T20:14:45.835+0000] {subprocess.py:93} INFO - [OK] 60 rows from linkedin for ML Engineer @ Paris
+[2025-10-17T20:14:45.837+0000] {subprocess.py:93} INFO - [OK] 12 rows from indeed for ML Engineer @ Lyon
+[2025-10-17T20:14:45.838+0000] {subprocess.py:93} INFO - [OK] 11 rows from glassdoor for ML Engineer @ Lyon
+[2025-10-17T20:14:45.839+0000] {subprocess.py:93} INFO - [OK] 9 rows from linkedin for ML Engineer @ Lyon
+[2025-10-17T20:14:45.840+0000] {subprocess.py:93} INFO - [OK] 400 rows from indeed for DevOps Engineer @ France
+[2025-10-17T20:14:45.841+0000] {subprocess.py:93} INFO - [OK] 346 rows from glassdoor for DevOps Engineer @ France
+[2025-10-17T20:14:45.842+0000] {subprocess.py:93} INFO - [OK] 140 rows from linkedin for DevOps Engineer @ France
+[2025-10-17T20:14:45.843+0000] {subprocess.py:93} INFO - [OK] 12 rows from indeed for DevOps Engineer @ Remote
+[2025-10-17T20:14:45.845+0000] {subprocess.py:93} INFO - [OK] 208 rows from glassdoor for DevOps Engineer @ Remote
+[2025-10-17T20:14:45.846+0000] {subprocess.py:93} INFO - [OK] 140 rows from linkedin for DevOps Engineer @ Remote
+[2025-10-17T20:14:45.847+0000] {subprocess.py:93} INFO - [OK] 220 rows from indeed for DevOps Engineer @ Paris
+[2025-10-17T20:14:45.848+0000] {subprocess.py:93} INFO - [OK] 205 rows from glassdoor for DevOps Engineer @ Paris
+[2025-10-17T20:14:45.849+0000] {subprocess.py:93} INFO - [OK] 110 rows from linkedin for DevOps Engineer @ Paris
+[2025-10-17T20:14:45.850+0000] {subprocess.py:93} INFO - [OK] 20 rows from indeed for DevOps Engineer @ Lyon
+[2025-10-17T20:14:45.850+0000] {subprocess.py:93} INFO - [OK] 18 rows from glassdoor for DevOps Engineer @ Lyon
+[2025-10-17T20:14:45.851+0000] {subprocess.py:93} INFO - [OK] 40 rows from linkedin for DevOps Engineer @ Lyon
+[2025-10-17T20:14:45.852+0000] {subprocess.py:93} INFO - [OK] 139 rows from indeed for Backend Developer @ France
+[2025-10-17T20:14:45.853+0000] {subprocess.py:93} INFO - [OK] 132 rows from glassdoor for Backend Developer @ France
+[2025-10-17T20:14:45.853+0000] {subprocess.py:93} INFO - [OK] 139 rows from linkedin for Backend Developer @ France
+[2025-10-17T20:14:45.854+0000] {subprocess.py:93} INFO - [OK] 5 rows from indeed for Backend Developer @ Remote
+[2025-10-17T20:14:45.855+0000] {subprocess.py:93} INFO - [OK] 250 rows from glassdoor for Backend Developer @ Remote
+[2025-10-17T20:14:45.856+0000] {subprocess.py:93} INFO - [OK] 139 rows from linkedin for Backend Developer @ Remote
+[2025-10-17T20:14:45.857+0000] {subprocess.py:93} INFO - [OK] 77 rows from indeed for Backend Developer @ Paris
+[2025-10-17T20:14:45.858+0000] {subprocess.py:93} INFO - [OK] 75 rows from glassdoor for Backend Developer @ Paris
+[2025-10-17T20:14:45.861+0000] {subprocess.py:93} INFO - [OK] 110 rows from linkedin for Backend Developer @ Paris
+[2025-10-17T20:14:45.862+0000] {subprocess.py:93} INFO - [OK] 9 rows from indeed for Backend Developer @ Lyon
+[2025-10-17T20:14:45.864+0000] {subprocess.py:93} INFO - [OK] 9 rows from glassdoor for Backend Developer @ Lyon
+[2025-10-17T20:14:45.865+0000] {subprocess.py:93} INFO - [OK] 60 rows from linkedin for Backend Developer @ Lyon
+[2025-10-17T20:14:45.866+0000] {subprocess.py:93} INFO - [OK] 400 rows from indeed for Data Analyst @ France
+[2025-10-17T20:14:45.868+0000] {subprocess.py:93} INFO - [OK] 398 rows from glassdoor for Data Analyst @ France
+[2025-10-17T20:14:45.869+0000] {subprocess.py:93} INFO - [OK] 140 rows from linkedin for Data Analyst @ France
+[2025-10-17T20:14:45.870+0000] {subprocess.py:93} INFO - [OK] 4 rows from indeed for Data Analyst @ Remote
+[2025-10-17T20:14:45.871+0000] {subprocess.py:93} INFO - [OK] 338 rows from glassdoor for Data Analyst @ Remote
+[2025-10-17T20:14:45.872+0000] {subprocess.py:93} INFO - [OK] 140 rows from linkedin for Data Analyst @ Remote
+[2025-10-17T20:14:45.873+0000] {subprocess.py:93} INFO - [OK] 339 rows from indeed for Data Analyst @ Paris
+[2025-10-17T20:14:45.874+0000] {subprocess.py:93} INFO - [OK] 288 rows from glassdoor for Data Analyst @ Paris
+[2025-10-17T20:14:45.874+0000] {subprocess.py:93} INFO - [OK] 139 rows from linkedin for Data Analyst @ Paris
+[2025-10-17T20:14:45.875+0000] {subprocess.py:93} INFO - [OK] 30 rows from indeed for Data Analyst @ Lyon
+[2025-10-17T20:14:45.880+0000] {subprocess.py:93} INFO - [OK] 26 rows from glassdoor for Data Analyst @ Lyon
+[2025-10-17T20:14:45.881+0000] {subprocess.py:93} INFO - [OK] 139 rows from linkedin for Data Analyst @ Lyon
+[2025-10-17T20:14:45.882+0000] {subprocess.py:93} INFO - [MERGED] 7447 rows → /workspace/datalake/raw/jobs/jobspy_all_{ds_nodash}.jsonl
+[2025-10-17T20:14:46.547+0000] {subprocess.py:97} INFO - Command exited with return code 0
+[2025-10-17T20:14:46.641+0000] {taskinstance.py:441} INFO - ::group::Post task execution logs
+[2025-10-17T20:14:47.283+0000] {taskinstance.py:1206} INFO - Marking task as SUCCESS. dag_id=jobs_jobspy_daily, task_id=collect_jobspy, run_id=manual__2025-10-17T19:42:54.787575+00:00, execution_date=20251017T194254, start_date=20251017T194258, end_date=20251017T201447
+[2025-10-17T20:14:47.493+0000] {local_task_job_runner.py:243} INFO - Task exited with return code 0
+[2025-10-17T20:14:47.874+0000] {taskinstance.py:3503} INFO - 1 downstream tasks scheduled from follow-on schedule check
+[2025-10-17T20:14:47.877+0000] {local_task_job_runner.py:222} INFO - ::endgroup::

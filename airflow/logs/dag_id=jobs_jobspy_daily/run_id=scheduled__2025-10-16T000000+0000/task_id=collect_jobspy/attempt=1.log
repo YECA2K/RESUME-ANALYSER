@@ -1,0 +1,48 @@
+[2025-10-17T13:33:11.178+0000] {local_task_job_runner.py:120} INFO - ::group::Pre task execution logs
+[2025-10-17T13:33:11.323+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: jobs_jobspy_daily.collect_jobspy scheduled__2025-10-16T00:00:00+00:00 [queued]>
+[2025-10-17T13:33:11.356+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: jobs_jobspy_daily.collect_jobspy scheduled__2025-10-16T00:00:00+00:00 [queued]>
+[2025-10-17T13:33:11.358+0000] {taskinstance.py:2306} INFO - Starting attempt 1 of 1
+[2025-10-17T13:33:11.412+0000] {taskinstance.py:2330} INFO - Executing <Task(BashOperator): collect_jobspy> on 2025-10-16 00:00:00+00:00
+[2025-10-17T13:33:11.435+0000] {logging_mixin.py:188} WARNING - /home/***/.local/lib/python3.12/site-packages/***/task/task_runner/standard_task_runner.py:62 DeprecationWarning: This process (pid=168) is multi-threaded, use of fork() may lead to deadlocks in the child.
+[2025-10-17T13:33:11.430+0000] {standard_task_runner.py:90} INFO - Running: ['***', 'tasks', 'run', 'jobs_jobspy_daily', 'collect_jobspy', 'scheduled__2025-10-16T00:00:00+00:00', '--job-id', '14', '--raw', '--subdir', 'DAGS_FOLDER/jobs_jobspy_daily.py', '--cfg-path', '/tmp/tmp8uyhmqs5']
+[2025-10-17T13:33:11.439+0000] {standard_task_runner.py:64} INFO - Started process 171 to run task
+[2025-10-17T13:33:11.439+0000] {standard_task_runner.py:91} INFO - Job 14: Subtask collect_jobspy
+[2025-10-17T13:33:11.664+0000] {task_command.py:426} INFO - Running <TaskInstance: jobs_jobspy_daily.collect_jobspy scheduled__2025-10-16T00:00:00+00:00 [running]> on host a3a944198d23
+[2025-10-17T13:33:12.149+0000] {taskinstance.py:2648} INFO - Exporting env vars: AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='jobs_jobspy_daily' AIRFLOW_CTX_TASK_ID='collect_jobspy' AIRFLOW_CTX_EXECUTION_DATE='2025-10-16T00:00:00+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='scheduled__2025-10-16T00:00:00+00:00'
+[2025-10-17T13:33:12.156+0000] {taskinstance.py:430} INFO - ::endgroup::
+[2025-10-17T13:33:12.266+0000] {subprocess.py:63} INFO - Tmp dir root location: /tmp
+[2025-10-17T13:33:12.275+0000] {subprocess.py:75} INFO - Running command: ['/usr/bin/bash', '-c', "python /workspace/scripts/jobspy_collect.py --query 'Data Engineer' --location 'France' --sites indeed,glassdoor,linkedin --pages 2 --days 7"]
+[2025-10-17T13:33:12.294+0000] {subprocess.py:86} INFO - Output:
+[2025-10-17T13:33:18.636+0000] {subprocess.py:93} INFO - Traceback (most recent call last):
+[2025-10-17T13:33:18.638+0000] {subprocess.py:93} INFO -   File "/workspace/scripts/jobspy_collect.py", line 35, in <module>
+[2025-10-17T13:33:18.641+0000] {subprocess.py:93} INFO -     main()
+[2025-10-17T13:33:18.643+0000] {subprocess.py:93} INFO -   File "/workspace/scripts/jobspy_collect.py", line 19, in main
+[2025-10-17T13:33:18.646+0000] {subprocess.py:93} INFO -     df = scrape_jobs(
+[2025-10-17T13:33:18.647+0000] {subprocess.py:93} INFO -          ^^^^^^^^^^^^
+[2025-10-17T13:33:18.649+0000] {subprocess.py:93} INFO -   File "/home/***/.local/lib/python3.12/site-packages/jobspy/__init__.py", line 84, in scrape_jobs
+[2025-10-17T13:33:18.650+0000] {subprocess.py:93} INFO -     country_enum = Country.from_string(country_indeed)
+[2025-10-17T13:33:18.651+0000] {subprocess.py:93} INFO -                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[2025-10-17T13:33:18.652+0000] {subprocess.py:93} INFO -   File "/home/***/.local/lib/python3.12/site-packages/jobspy/model.py", line 176, in from_string
+[2025-10-17T13:33:18.654+0000] {subprocess.py:93} INFO -     raise ValueError(
+[2025-10-17T13:33:18.655+0000] {subprocess.py:93} INFO - ValueError: Invalid country string: 'fr'. Valid countries are: argentina, australia, austria, bahrain, bangladesh, belgium, bulgaria, brazil, canada, chile, china, colombia, costa rica, croatia, cyprus, czech republic,czechia, denmark, ecuador, egypt, estonia, finland, france, germany, greece, hong kong, hungary, india, indonesia, ireland, israel, italy, japan, kuwait, latvia, lithuania, luxembourg, malaysia, malta, mexico, morocco, netherlands, new zealand, nigeria, norway, oman, pakistan, panama, peru, philippines, poland, portugal, qatar, romania, saudi arabia, singapore, slovakia, slovenia, south africa, south korea, spain, sweden, switzerland, taiwan, thailand, türkiye,turkey, ukraine, united arab emirates, uk,united kingdom, usa,us,united states, uruguay, venezuela, vietnam, usa/ca, worldwide
+[2025-10-17T13:33:18.895+0000] {subprocess.py:97} INFO - Command exited with return code 1
+[2025-10-17T13:33:18.897+0000] {taskinstance.py:441} INFO - ::group::Post task execution logs
+[2025-10-17T13:33:18.936+0000] {taskinstance.py:2905} ERROR - Task failed with exception
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/taskinstance.py", line 465, in _execute_task
+    result = _execute_callable(context=context, **execute_callable_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/taskinstance.py", line 432, in _execute_callable
+    return execute_callable(context=context, **execute_callable_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/baseoperator.py", line 401, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/operators/bash.py", line 243, in execute
+    raise AirflowException(
+airflow.exceptions.AirflowException: Bash command failed. The command returned a non-zero exit code 1.
+[2025-10-17T13:33:18.953+0000] {taskinstance.py:1206} INFO - Marking task as FAILED. dag_id=jobs_jobspy_daily, task_id=collect_jobspy, run_id=scheduled__2025-10-16T00:00:00+00:00, execution_date=20251016T000000, start_date=20251017T133311, end_date=20251017T133318
+[2025-10-17T13:33:18.994+0000] {standard_task_runner.py:110} ERROR - Failed to execute job 14 for task collect_jobspy (Bash command failed. The command returned a non-zero exit code 1.; 171)
+[2025-10-17T13:33:19.034+0000] {local_task_job_runner.py:243} INFO - Task exited with return code 1
+[2025-10-17T13:33:19.110+0000] {taskinstance.py:3503} INFO - 0 downstream tasks scheduled from follow-on schedule check
+[2025-10-17T13:33:19.117+0000] {local_task_job_runner.py:222} INFO - ::endgroup::

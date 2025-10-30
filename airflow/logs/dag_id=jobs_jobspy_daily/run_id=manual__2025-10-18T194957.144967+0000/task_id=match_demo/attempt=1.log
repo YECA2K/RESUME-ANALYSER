@@ -1,0 +1,25 @@
+[2025-10-18T20:19:04.561+0000] {local_task_job_runner.py:120} INFO - ::group::Pre task execution logs
+[2025-10-18T20:19:04.651+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: jobs_jobspy_daily.match_demo manual__2025-10-18T19:49:57.144967+00:00 [queued]>
+[2025-10-18T20:19:04.672+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: jobs_jobspy_daily.match_demo manual__2025-10-18T19:49:57.144967+00:00 [queued]>
+[2025-10-18T20:19:04.673+0000] {taskinstance.py:2306} INFO - Starting attempt 1 of 1
+[2025-10-18T20:19:04.706+0000] {taskinstance.py:2330} INFO - Executing <Task(BashOperator): match_demo> on 2025-10-18 19:49:57.144967+00:00
+[2025-10-18T20:19:04.721+0000] {logging_mixin.py:188} WARNING - /home/***/.local/lib/python3.12/site-packages/***/task/task_runner/standard_task_runner.py:62 DeprecationWarning: This process (pid=2417) is multi-threaded, use of fork() may lead to deadlocks in the child.
+[2025-10-18T20:19:04.724+0000] {standard_task_runner.py:64} INFO - Started process 2418 to run task
+[2025-10-18T20:19:04.722+0000] {standard_task_runner.py:90} INFO - Running: ['***', 'tasks', 'run', 'jobs_jobspy_daily', 'match_demo', 'manual__2025-10-18T19:49:57.144967+00:00', '--job-id', '61', '--raw', '--subdir', 'DAGS_FOLDER/jobs_jobspy_daily.py', '--cfg-path', '/tmp/tmpe7jh9a5m']
+[2025-10-18T20:19:04.726+0000] {standard_task_runner.py:91} INFO - Job 61: Subtask match_demo
+[2025-10-18T20:19:04.848+0000] {task_command.py:426} INFO - Running <TaskInstance: jobs_jobspy_daily.match_demo manual__2025-10-18T19:49:57.144967+00:00 [running]> on host 68cd41389e54
+[2025-10-18T20:19:05.248+0000] {taskinstance.py:2648} INFO - Exporting env vars: AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='jobs_jobspy_daily' AIRFLOW_CTX_TASK_ID='match_demo' AIRFLOW_CTX_EXECUTION_DATE='2025-10-18T19:49:57.144967+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='manual__2025-10-18T19:49:57.144967+00:00'
+[2025-10-18T20:19:05.250+0000] {taskinstance.py:430} INFO - ::endgroup::
+[2025-10-18T20:19:05.293+0000] {subprocess.py:63} INFO - Tmp dir root location: /tmp
+[2025-10-18T20:19:05.297+0000] {subprocess.py:75} INFO - Running command: ['/usr/bin/bash', '-c', "curl -X POST 'http://api:8000/match/run?job_title=Data%20Engineer'"]
+[2025-10-18T20:19:05.311+0000] {subprocess.py:86} INFO - Output:
+[2025-10-18T20:19:05.440+0000] {subprocess.py:93} INFO -   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+[2025-10-18T20:19:05.441+0000] {subprocess.py:93} INFO -                                  Dload  Upload   Total   Spent    Left  Speed
+[2025-10-18T20:19:05.763+0000] {subprocess.py:93} INFO -   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100    26  100    26    0     0     80      0 --:--:-- --:--:-- --:--:--    80
+[2025-10-18T20:19:05.769+0000] {subprocess.py:93} INFO - {"detail":"job not found"}
+[2025-10-18T20:19:05.770+0000] {subprocess.py:97} INFO - Command exited with return code 0
+[2025-10-18T20:19:05.772+0000] {taskinstance.py:441} INFO - ::group::Post task execution logs
+[2025-10-18T20:19:05.851+0000] {taskinstance.py:1206} INFO - Marking task as SUCCESS. dag_id=jobs_jobspy_daily, task_id=match_demo, run_id=manual__2025-10-18T19:49:57.144967+00:00, execution_date=20251018T194957, start_date=20251018T201904, end_date=20251018T201905
+[2025-10-18T20:19:05.903+0000] {local_task_job_runner.py:243} INFO - Task exited with return code 0
+[2025-10-18T20:19:05.946+0000] {taskinstance.py:3503} INFO - 0 downstream tasks scheduled from follow-on schedule check
+[2025-10-18T20:19:05.949+0000] {local_task_job_runner.py:222} INFO - ::endgroup::

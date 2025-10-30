@@ -1,0 +1,76 @@
+[2025-10-17T17:53:01.308+0000] {local_task_job_runner.py:120} INFO - ::group::Pre task execution logs
+[2025-10-17T17:53:01.536+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-17T17:52:58.715592+00:00 [queued]>
+[2025-10-17T17:53:01.555+0000] {taskinstance.py:2076} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-17T17:52:58.715592+00:00 [queued]>
+[2025-10-17T17:53:01.556+0000] {taskinstance.py:2306} INFO - Starting attempt 1 of 1
+[2025-10-17T17:53:01.584+0000] {taskinstance.py:2330} INFO - Executing <Task(BashOperator): collect_jobspy> on 2025-10-17 17:52:58.715592+00:00
+[2025-10-17T17:53:01.598+0000] {logging_mixin.py:188} WARNING - /home/***/.local/lib/python3.12/site-packages/***/task/task_runner/standard_task_runner.py:62 DeprecationWarning: This process (pid=877) is multi-threaded, use of fork() may lead to deadlocks in the child.
+[2025-10-17T17:53:01.600+0000] {standard_task_runner.py:64} INFO - Started process 878 to run task
+[2025-10-17T17:53:01.597+0000] {standard_task_runner.py:90} INFO - Running: ['***', 'tasks', 'run', 'jobs_jobspy_daily', 'collect_jobspy', 'manual__2025-10-17T17:52:58.715592+00:00', '--job-id', '30', '--raw', '--subdir', 'DAGS_FOLDER/jobs_jobspy_daily.py', '--cfg-path', '/tmp/tmp5rmf8bii']
+[2025-10-17T17:53:01.601+0000] {standard_task_runner.py:91} INFO - Job 30: Subtask collect_jobspy
+[2025-10-17T17:53:01.698+0000] {task_command.py:426} INFO - Running <TaskInstance: jobs_jobspy_daily.collect_jobspy manual__2025-10-17T17:52:58.715592+00:00 [running]> on host 68cd41389e54
+[2025-10-17T17:53:01.883+0000] {taskinstance.py:2648} INFO - Exporting env vars: AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='jobs_jobspy_daily' AIRFLOW_CTX_TASK_ID='collect_jobspy' AIRFLOW_CTX_EXECUTION_DATE='2025-10-17T17:52:58.715592+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='manual__2025-10-17T17:52:58.715592+00:00'
+[2025-10-17T17:53:01.884+0000] {taskinstance.py:430} INFO - ::endgroup::
+[2025-10-17T17:53:01.941+0000] {subprocess.py:63} INFO - Tmp dir root location: /tmp
+[2025-10-17T17:53:01.946+0000] {subprocess.py:75} INFO - Running command: ['/usr/bin/bash', '-c', "python /workspace/scripts/jobspy_collect.py --queries 'Data Engineer,Data Scientist,ML Engineer,DevOps Engineer,Backend Developer' --locations 'France,Remote,Paris' --sites indeed,glassdoor,linkedin --pages 4 --days 21 --max_per_query 1000"]
+[2025-10-17T17:53:01.959+0000] {subprocess.py:86} INFO - Output:
+[2025-10-17T17:54:35.822+0000] {subprocess.py:93} INFO - 2025-10-17 17:54:35,821 - INFO - JobSpy:Linkedin - finished scraping
+[2025-10-17T18:11:46.151+0000] {subprocess.py:93} INFO - /workspace/scripts/jobspy_collect.py:100: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+[2025-10-17T18:11:46.249+0000] {subprocess.py:93} INFO -   big = pd.concat(all_chunks, ignore_index=True)
+[2025-10-17T18:11:48.843+0000] {subprocess.py:93} INFO - [INFO] DATA_LAKE_ROOT=/workspace/datalake
+[2025-10-17T18:11:48.848+0000] {subprocess.py:93} INFO - [INFO] RAW_DIR=/workspace/datalake/raw/jobs/ingest_date=2025-10-17
+[2025-10-17T18:11:48.851+0000] {subprocess.py:93} INFO - [INFO] Sites=['indeed', 'glassdoor', 'linkedin'] | Queries=['Data Engineer', 'Data Scientist', 'ML Engineer', 'DevOps Engineer', 'Backend Developer'] | Locations=['France', 'Remote', 'Paris']
+[2025-10-17T18:11:48.852+0000] {subprocess.py:93} INFO - [INFO] pages=4 days=21 max_per_query=1000
+[2025-10-17T18:11:48.857+0000] {subprocess.py:93} INFO - [OK] 200 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_Data_Engineer_France.jsonl
+[2025-10-17T18:11:48.860+0000] {subprocess.py:93} INFO - [OK] 200 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_Data_Engineer_France.jsonl
+[2025-10-17T18:11:48.863+0000] {subprocess.py:93} INFO - [OK] 140 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_Data_Engineer_France.jsonl
+[2025-10-17T18:11:48.864+0000] {subprocess.py:93} INFO - [OK] 17 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_Data_Engineer_Remote.jsonl
+[2025-10-17T18:11:48.867+0000] {subprocess.py:93} INFO - [OK] 31 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_Data_Engineer_Remote.jsonl
+[2025-10-17T18:11:48.868+0000] {subprocess.py:93} INFO - [OK] 140 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_Data_Engineer_Remote.jsonl
+[2025-10-17T18:11:48.871+0000] {subprocess.py:93} INFO - [OK] 200 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_Data_Engineer_Paris.jsonl
+[2025-10-17T18:11:48.873+0000] {subprocess.py:93} INFO - [OK] 191 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_Data_Engineer_Paris.jsonl
+[2025-10-17T18:11:48.876+0000] {subprocess.py:93} INFO - [OK] 140 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_Data_Engineer_Paris.jsonl
+[2025-10-17T18:11:48.879+0000] {subprocess.py:93} INFO - [OK] 200 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_Data_Scientist_France.jsonl
+[2025-10-17T18:11:48.881+0000] {subprocess.py:93} INFO - [OK] 200 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_Data_Scientist_France.jsonl
+[2025-10-17T18:11:48.884+0000] {subprocess.py:93} INFO - [OK] 140 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_Data_Scientist_France.jsonl
+[2025-10-17T18:11:48.887+0000] {subprocess.py:93} INFO - [OK] 2 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_Data_Scientist_Remote.jsonl
+[2025-10-17T18:11:48.890+0000] {subprocess.py:93} INFO - [OK] 188 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_Data_Scientist_Remote.jsonl
+[2025-10-17T18:11:48.892+0000] {subprocess.py:93} INFO - [ERROR] site='linkedin' query='Data Scientist' location='Remote': Invalid country string: 'azerbaijan'. Valid countries are: argentina, australia, austria, bahrain, bangladesh, belgium, bulgaria, brazil, canada, chile, china, colombia, costa rica, croatia, cyprus, czech republic,czechia, denmark, ecuador, egypt, estonia, finland, france, germany, greece, hong kong, hungary, india, indonesia, ireland, israel, italy, japan, kuwait, latvia, lithuania, luxembourg, malaysia, malta, mexico, morocco, netherlands, new zealand, nigeria, norway, oman, pakistan, panama, peru, philippines, poland, portugal, qatar, romania, saudi arabia, singapore, slovakia, slovenia, south africa, south korea, spain, sweden, switzerland, taiwan, thailand, türkiye,turkey, ukraine, united arab emirates, uk,united kingdom, usa,us,united states, uruguay, venezuela, vietnam, usa/ca, worldwide
+[2025-10-17T18:11:48.896+0000] {subprocess.py:93} INFO - [OK] 200 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_Data_Scientist_Paris.jsonl
+[2025-10-17T18:11:48.898+0000] {subprocess.py:93} INFO - [OK] 195 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_Data_Scientist_Paris.jsonl
+[2025-10-17T18:11:48.899+0000] {subprocess.py:93} INFO - [OK] 140 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_Data_Scientist_Paris.jsonl
+[2025-10-17T18:11:48.900+0000] {subprocess.py:93} INFO - [OK] 200 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_ML_Engineer_France.jsonl
+[2025-10-17T18:11:48.901+0000] {subprocess.py:93} INFO - [OK] 168 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_ML_Engineer_France.jsonl
+[2025-10-17T18:11:48.902+0000] {subprocess.py:93} INFO - [OK] 64 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_ML_Engineer_France.jsonl
+[2025-10-17T18:11:48.904+0000] {subprocess.py:93} INFO - [OK] 1 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_ML_Engineer_Remote.jsonl
+[2025-10-17T18:11:48.905+0000] {subprocess.py:93} INFO - [OK] 200 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_ML_Engineer_Remote.jsonl
+[2025-10-17T18:11:48.909+0000] {subprocess.py:93} INFO - [OK] 140 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_ML_Engineer_Remote.jsonl
+[2025-10-17T18:11:48.910+0000] {subprocess.py:93} INFO - [OK] 96 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_ML_Engineer_Paris.jsonl
+[2025-10-17T18:11:48.911+0000] {subprocess.py:93} INFO - [OK] 77 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_ML_Engineer_Paris.jsonl
+[2025-10-17T18:11:48.912+0000] {subprocess.py:93} INFO - [OK] 50 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_ML_Engineer_Paris.jsonl
+[2025-10-17T18:11:48.914+0000] {subprocess.py:93} INFO - [OK] 200 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_DevOps_Engineer_France.jsonl
+[2025-10-17T18:11:48.914+0000] {subprocess.py:93} INFO - [OK] 200 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_DevOps_Engineer_France.jsonl
+[2025-10-17T18:11:48.916+0000] {subprocess.py:93} INFO - [OK] 136 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_DevOps_Engineer_France.jsonl
+[2025-10-17T18:11:48.918+0000] {subprocess.py:93} INFO - [OK] 6 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_DevOps_Engineer_Remote.jsonl
+[2025-10-17T18:11:48.919+0000] {subprocess.py:93} INFO - [OK] 120 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_DevOps_Engineer_Remote.jsonl
+[2025-10-17T18:11:48.920+0000] {subprocess.py:93} INFO - [OK] 140 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_DevOps_Engineer_Remote.jsonl
+[2025-10-17T18:11:48.921+0000] {subprocess.py:93} INFO - [OK] 134 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_DevOps_Engineer_Paris.jsonl
+[2025-10-17T18:11:48.923+0000] {subprocess.py:93} INFO - [OK] 113 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_DevOps_Engineer_Paris.jsonl
+[2025-10-17T18:11:48.925+0000] {subprocess.py:93} INFO - [OK] 100 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_DevOps_Engineer_Paris.jsonl
+[2025-10-17T18:11:48.926+0000] {subprocess.py:93} INFO - [OK] 82 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_Backend_Developer_France.jsonl
+[2025-10-17T18:11:48.927+0000] {subprocess.py:93} INFO - [OK] 80 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_Backend_Developer_France.jsonl
+[2025-10-17T18:11:48.929+0000] {subprocess.py:93} INFO - [OK] 140 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_Backend_Developer_France.jsonl
+[2025-10-17T18:11:48.930+0000] {subprocess.py:93} INFO - [OK] 3 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_Backend_Developer_Remote.jsonl
+[2025-10-17T18:11:48.931+0000] {subprocess.py:93} INFO - [OK] 73 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_Backend_Developer_Remote.jsonl
+[2025-10-17T18:11:48.933+0000] {subprocess.py:93} INFO - [OK] 140 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_Backend_Developer_Remote.jsonl
+[2025-10-17T18:11:48.934+0000] {subprocess.py:93} INFO - [OK] 47 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_indeed_Backend_Developer_Paris.jsonl
+[2025-10-17T18:11:48.935+0000] {subprocess.py:93} INFO - [OK] 47 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_glassdoor_Backend_Developer_Paris.jsonl
+[2025-10-17T18:11:48.936+0000] {subprocess.py:93} INFO - [OK] 90 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_linkedin_Backend_Developer_Paris.jsonl
+[2025-10-17T18:11:48.938+0000] {subprocess.py:93} INFO - [DEDUP] 5371 → 3923 uniques by job_url
+[2025-10-17T18:11:48.940+0000] {subprocess.py:93} INFO - [MERGED] 3923 rows → /workspace/datalake/raw/jobs/ingest_date=2025-10-17/jobspy_merged.jsonl
+[2025-10-17T18:11:48.942+0000] {subprocess.py:93} INFO - [FILES] Parts written: 44
+[2025-10-17T18:11:49.367+0000] {subprocess.py:97} INFO - Command exited with return code 0
+[2025-10-17T18:11:49.398+0000] {taskinstance.py:441} INFO - ::group::Post task execution logs
+[2025-10-17T18:11:49.710+0000] {taskinstance.py:1206} INFO - Marking task as SUCCESS. dag_id=jobs_jobspy_daily, task_id=collect_jobspy, run_id=manual__2025-10-17T17:52:58.715592+00:00, execution_date=20251017T175258, start_date=20251017T175301, end_date=20251017T181149
+[2025-10-17T18:11:49.835+0000] {local_task_job_runner.py:243} INFO - Task exited with return code 0
+[2025-10-17T18:11:50.078+0000] {taskinstance.py:3503} INFO - 1 downstream tasks scheduled from follow-on schedule check
+[2025-10-17T18:11:50.081+0000] {local_task_job_runner.py:222} INFO - ::endgroup::
