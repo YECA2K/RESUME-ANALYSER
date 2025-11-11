@@ -30,7 +30,7 @@ with DAG(
 
     normalize = BashOperator(
         task_id="normalize_jobspy",
-        env={"API_URL": "http://api:8000"},
+        env={"API_URL": "http://resume-analyser-api-1:8000"},
         bash_command="python /workspace/scripts/jobspy_normalize_jobs.py"
     )
 

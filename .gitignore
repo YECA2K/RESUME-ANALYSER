@@ -4,7 +4,8 @@ __pycache__/**
 
 **/*.log*
 .log*/**
-
+ops/datalake/raw/jobs/*.jsonl
+ops/datalake/_probe_container.txt
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
