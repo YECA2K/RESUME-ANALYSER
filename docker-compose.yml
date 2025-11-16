@@ -1,4 +1,4 @@
-# docker-compose.yml
+version: "3.9"
 
 x-airflow-env: &airflow_env
   AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -15,43 +15,46 @@ services:
       - mongo_data:/data/db
     restart: unless-stopped
 
-api:
-  build:
-    context: ./api
-    dockerfile: Dockerfile
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      DB_NAME: matcher
+      DATA_LAKE_ROOT: /app/ops/datalake
 
-  environment:
-    # --- DATABASE ---
-    MONGO_URL: mongodb://mongo:27017
-    DB_NAME: matcher
+      # ---------- OPENROUTER CONFIG (EXTRACTION + MATCHING) ----------
+      OPENROUTER_API_KEY: "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"
+      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1"
+      OPENROUTER_HTTP_REFERRER: "http://resume-analyser"
+      OPENROUTER_X_TITLE: "resume-analyser"
 
-    # --- DATA LAKE ---
-    DATA_LAKE_ROOT: /app/ops/datalake
-    API_URL: http://api:8000
+      # Extraction LLM
+      EXTRACT_LLM_MODEL: "meta-llama/llama-3-8b-instruct"
 
-    # --- OPENROUTER LLM CONFIG ---
-    OPENROUTER_API_KEY: "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"
-    OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1"
-    OPENROUTER_HTTP_REFERRER: "http://resume-analyser"
-    OPENROUTER_X_TITLE: "resume-analyser"
+      # Matching LLM
+      MATCH_LLM_MODEL: "qwen/qwen-2.5-14b-instruct"
+    volumes:
+      - ./api/app:/app/app
+      - ./scripts:/app/scripts
+      - ./ops:/app/ops
+    depends_on:
+      - mongo
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
 
-    # --- MODELS USED ---
-    MATCHER_MODEL:   "qwen/qwen-2.5-14b-instruct"            # Second LLM: ranking + matching
+  airflow-db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+    volumes:
+      - airflow_db:/var/lib/postgresql/data
+    restart: unless-stopped
 
-  volumes:
-    - ./api/app:/app/app
-    - ./scripts:/app/scripts
-    - ./ops:/app/ops
-
-  depends_on:
-    - mongo
-
-  ports:
-    - "8000:8000"
-
-  restart: unless-stopped
-
-  # On BUILDe l'image Airflow custom UNE FOIS ici (tag: de-airflow:jobspy)
   airflow-init:
     image: de-airflow:jobspy
     build:
@@ -62,11 +65,16 @@ api:
       <<: *airflow_env
       DATA_LAKE_ROOT: /workspace/datalake
       API_URL: http://api:8000
+
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
       _AIRFLOW_WWW_USER_USERNAME: admin
       _AIRFLOW_WWW_USER_PASSWORD: admin
-      AIRFLOW__WEBSERVER__SECRET_KEY: "test-7b8c7f2b7ee7429e8d7dcbaf6b2a22a1"
-    command: -c "airflow db init && airflow users create -r Admin -u $${_AIRFLOW_WWW_USER_USERNAME} -p $${_AIRFLOW_WWW_USER_PASSWORD} -e admin@example.com -f admin -l user || true"
+      AIRFLOW__WEBSERVER__SECRET_KEY: "secret"
+    command: >
+      -c "airflow db init &&
+          airflow users create -r Admin -u $${_AIRFLOW_WWW_USER_USERNAME}
+          -p $${_AIRFLOW_WWW_USER_PASSWORD} -e admin@example.com
+          -f admin -l user || true"
     depends_on:
       - airflow-db
     volumes:
@@ -74,10 +82,8 @@ api:
       - ./scripts:/workspace/scripts
       - ./ops/datalake:/workspace/datalake
       - ./airflow/logs:/opt/airflow/logs
-      
     restart: "no"
 
-  # Le scheduler UTILISE la même image taggée (pas de build ici)
   airflow-scheduler:
     image: de-airflow:jobspy
     environment:
@@ -85,7 +91,7 @@ api:
       DATA_LAKE_ROOT: /workspace/datalake
       API_URL: http://api:8000
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
-      AIRFLOW__WEBSERVER__SECRET_KEY: "test-7b8c7f2b7ee7429e8d7dcbaf6b2a22a1"
+      AIRFLOW__WEBSERVER__SECRET_KEY: "secret"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./scripts:/workspace/scripts
@@ -97,7 +103,6 @@ api:
     command: ["airflow", "scheduler"]
     restart: unless-stopped
 
-  # Le webserver UTILISE la même image taggée (pas de build ici)
   airflow-webserver:
     image: de-airflow:jobspy
     ports: ["8080:8080"]
@@ -106,7 +111,7 @@ api:
       DATA_LAKE_ROOT: /workspace/datalake
       API_URL: http://api:8000
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
-      AIRFLOW__WEBSERVER__SECRET_KEY: "test-7b8c7f2b7ee7429e8d7dcbaf6b2a22a1"
+      AIRFLOW__WEBSERVER__SECRET_KEY: "secret"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./scripts:/workspace/scripts
