@@ -15,33 +15,41 @@ services:
       - mongo_data:/data/db
     restart: unless-stopped
 
-  api:
-    build:
-      context: ./api
-      dockerfile: Dockerfile
-    environment:
-      MONGO_URL: mongodb://mongo:27017
-      DB_NAME: matcher
-      DATA_LAKE_ROOT: /app/ops/datalake
-    volumes:
-      - ./api/app:/app/app
-      - ./scripts:/app/scripts
-      - ./ops:/app/ops
-    depends_on:
-      - mongo
-    ports:
-      - "8000:8000"
-    restart: unless-stopped
+api:
+  build:
+    context: ./api
+    dockerfile: Dockerfile
 
-  airflow-db:
-    image: postgres:14
-    environment:
-      POSTGRES_DB: airflow
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-    volumes:
-      - airflow_db:/var/lib/postgresql/data
-    restart: unless-stopped
+  environment:
+    # --- DATABASE ---
+    MONGO_URL: mongodb://mongo:27017
+    DB_NAME: matcher
+
+    # --- DATA LAKE ---
+    DATA_LAKE_ROOT: /app/ops/datalake
+    API_URL: http://api:8000
+
+    # --- OPENROUTER LLM CONFIG ---
+    OPENROUTER_API_KEY: "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"
+    OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1"
+    OPENROUTER_HTTP_REFERRER: "http://resume-analyser"
+    OPENROUTER_X_TITLE: "resume-analyser"
+
+    # --- MODELS USED ---
+    MATCHER_MODEL:   "qwen/qwen-2.5-14b-instruct"            # Second LLM: ranking + matching
+
+  volumes:
+    - ./api/app:/app/app
+    - ./scripts:/app/scripts
+    - ./ops:/app/ops
+
+  depends_on:
+    - mongo
+
+  ports:
+    - "8000:8000"
+
+  restart: unless-stopped
 
   # On BUILDe l'image Airflow custom UNE FOIS ici (tag: de-airflow:jobspy)
   airflow-init:

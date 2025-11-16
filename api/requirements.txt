@@ -9,4 +9,6 @@ jobspy==0.31.0
 pandas==2.2.2
 email-validator==2.2.0
 python-multipart==0.0.9
-
+langdetect==1.0.9
+boto3
+botocore

@@ -1,237 +1,98 @@
 import os
-import datetime
-import re
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from pypdf import PdfReader
+import fitz  # pymupdf
+import numpy as np
+from fastapi import FastAPI, UploadFile, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pymongo import MongoClient
 
-from .db import db, ensure_indexes
-from .schemas import CandidateIn, JobPostingIn
-from .llm.extractor import extract_profile_from_text   #  NOUVEAU IMPORT
+from llm.extract_cv_openrouter import extract_cv_data
+from llm.embeddings import embed_text
+from llm.matcher_openrouter import score_candidate_against_job
 
-DATA_LAKE = os.environ.get("DATA_LAKE_ROOT", "/app/ops/datalake")
+app = FastAPI()
 
-app = FastAPI(title="All-in-One DE Backend")
-ensure_indexes()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+MONGO_URL = os.getenv("MONGO_URL")
+DB_NAME = os.getenv("DB_NAME", "matcher")
+
+client = MongoClient(MONGO_URL)
+db = client[DB_NAME]
+candidates = db.candidates
+jobs = db.jobs
+
+
+def cosine_similarity(a, b):
+    a = np.array(a)
+    b = np.array(b)
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
 @app.get("/health")
 def health():
-    db.command("ping")
     return {"status": "ok"}
 
 
-#  Endpoint CV -> Extraction LLM + Insertion MongoDB
 @app.post("/upload_cv")
-async def upload_cv(
-    file: UploadFile = File(...),
-    full_name: str = Form("Unknown"),
-    email: str = Form(None),
-    city: str = Form(None),
-    country: str = Form(None)
-):
-    # -----------------------------
-    # 1) Sauvegarde PDF dans Data Lake
-    # -----------------------------
-    raw_cv_dir = os.path.join(DATA_LAKE, "raw", "cv")
-    os.makedirs(raw_cv_dir, exist_ok=True)
-
-    ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    raw_pdf_path = os.path.join(raw_cv_dir, f"{ts}_{file.filename}")
-
-    with open(raw_pdf_path, "wb") as f:
-        f.write(await file.read())
-
-    # -----------------------------
-    # 2) Extraction du texte du PDF
-    # -----------------------------
-    text = ""
+async def upload_cv(file: UploadFile, full_name: str = Form(...)):
+    # ---- PDF extraction ----
     try:
-        reader = PdfReader(raw_pdf_path)
-        for page in reader.pages:
-            extracted = page.extract_text() or ""
-            text += extracted
-    except Exception:
+        pdf = fitz.open(stream=await file.read(), filetype="pdf")
         text = ""
+        for page in pdf:
+            text += page.get_text()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"PDF extraction failed: {e}")
 
-    # Sauvegarde du texte brut
-    txt_dir = os.path.join(DATA_LAKE, "raw", "cv_text")
-    os.makedirs(txt_dir, exist_ok=True)
+    # ---- LLM #1 extraction ----
+    llm_data = extract_cv_data(text)
+    llm_data["full_name"] = full_name
 
-    txt_path = os.path.join(
-        txt_dir, f"{ts}_{os.path.splitext(file.filename)[0]}.txt"
-    )
-    with open(txt_path, "w", encoding="utf-8") as f:
-        f.write(text)
+    # ---- Compute CV vector ----
+    cv_vector = embed_text(text)
+    llm_data["vector"] = cv_vector
 
-    # -----------------------------
-    # 3) Extraction LLM (Ollama / Phi-3)
-    # -----------------------------
-    llm_data = extract_profile_from_text(text)
+    inserted = candidates.insert_one(llm_data)
 
-    if isinstance(llm_data, dict) and "error" in llm_data:
-        print("⚠️ LLM returned invalid JSON. Raw output kept.")
-        llm_data = {
-            "skills": [],
-            "languages": [],
-            "summary": "",
-            "experiences": [],
-            "education": []
-        }
-
-    # -----------------------------
-    # 4) Construction du document MongoDB
-    # -----------------------------
-    cand_doc = {
-        "full_name": full_name,
-        "email": email,
-        "location": {"city": city, "country": country},
-        "skills_declared": llm_data.get("skills", []),
-        "experiences": llm_data.get("experiences", []),
-        "education": llm_data.get("education", []),
-        "languages": llm_data.get("languages", []),
-        "summary": llm_data.get("summary", ""),
-        "profile_source": "cv",
-        "profile_created_at": datetime.datetime.utcnow().isoformat(),
-        "cv_pdf_path": raw_pdf_path,
-        "cv_text_path": txt_path
-    }
-
-    #  insertion MongoDB
-    res = db.candidates.insert_one(cand_doc)
-
-    return {
-        "candidate_id": str(res.inserted_id),
-        "skills_detected": llm_data.get("skills", []),
-        "languages": llm_data.get("languages", []),
-        "experiences": llm_data.get("experiences", []),
-        "education": llm_data.get("education", []),
-        "summary": llm_data.get("summary", "")
-    }
+    return {"candidate_id": str(inserted.inserted_id), **llm_data}
 
 
-# =====================================================================
-#  ENDPOINTS JOBS
-# =====================================================================
+@app.get("/match/{candidate_id}")
+def match_candidate(candidate_id: str):
+    cv = candidates.find_one({"_id": candidate_id})
+    if not cv:
+        raise HTTPException(404, "Candidate not found")
 
-@app.post("/candidates")
-def create_candidate(payload: CandidateIn):
-    doc = payload.model_dump()
-    doc["profile_created_at"] = datetime.datetime.utcnow().isoformat()
-    res = db.candidates.insert_one(doc)
-    return {"_id": str(res.inserted_id)}
+    cv_vector = cv["vector"]
 
+    # ---- VECTOR SEARCH top 10 ----
+    scored = []
+    for job in jobs.find():
+        if "vector" not in job:
+            continue
 
-@app.post("/jobs/ingest")
-def ingest_job(payload: JobPostingIn):
-    doc = payload.model_dump()
-    doc["ingested_at"] = datetime.datetime.utcnow().isoformat()
+        sim = cosine_similarity(cv_vector, job["vector"])
+        scored.append((sim, job))
 
-    key = {
-        "source": doc.get("source"),
-        "url": doc.get("url"),
-        "title": doc.get("title"),
-        "company": doc.get("company")
-    }
+    top10 = sorted(scored, key=lambda x: x[0], reverse=True)[:10]
 
-    db.job_postings.update_one(key, {"$set": doc}, upsert=True)
-    return {"status": "ok"}
-
-
-# =====================================================================
-#  MATCHING SIMPLIFIÉ (Stub)
-# =====================================================================
-
-def recall_topk(job, k=100):
-    terms = []
-    terms.extend(job.get("skills_required", []))
-    if job.get("title"):
-        terms.extend(job["title"].split())
-    query = " ".join(terms)
-
-    if not query.strip():
-        return list(db.candidates.find({}).limit(k))
-
-    return list(db.candidates.find({"$text": {"$search": query}}).limit(k))
-
-
-def llm_score_stub(job, cand):
-    req = set([s.lower() for s in job.get("skills_required", [])])
-    have = set([s.lower() for s in cand.get("skills_declared", [])])
-
-    matched = sorted(list(req & have))
-    missing = sorted(list(req - have))
-
-    base = len(matched) / (len(req) or 1)
-    loc_bonus = 0.1 if (
-        (job.get("location", {}).get("city") or "").lower() ==
-        (cand.get("location", {}).get("city") or "").lower()
-    ) else 0.0
-
-    score = min(1.0, round(base * 0.85 + loc_bonus, 3))
-
-    return {
-        "score": score,
-        "matched_skills": matched,
-        "missing_skills": missing,
-        "seniority_fit": "partial",
-        "location_fit": "yes" if loc_bonus > 0 else "partial",
-        "rationale": f"{len(matched)} skills sur {len(req)} requises."
-    }
-
-
-@app.post("/match/run")
-def run_match(job_title: str, top_k: int = 100, top_n: int = 10):
-    job = db.job_postings.find_one({"title": job_title})
-    if not job:
-        raise HTTPException(404, "job not found")
-
-    cands = recall_topk(job, k=top_k)
+    # ---- LLM #2 reranking ----
     results = []
-
-    for c in cands:
-        res = llm_score_stub(job, c)
+    for sim, job in top10:
+        llm_score = score_candidate_against_job(cv, job)
         results.append({
-            "job_ref": str(job.get("_id")),
-            "candidate_ref": str(c.get("_id")),
-            **res
+            "job": job,
+            "similarity": sim,
+            "score": llm_score.get("score", 0),
+            "reason": llm_score.get("reason", "")
         })
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    # Return top 5 ranked by score
+    final = sorted(results, key=lambda x: x["score"], reverse=True)[:5]
 
-    items = [{
-        "job_ref": r["job_ref"],
-        "candidate_ref": r["candidate_ref"],
-        "score": r["score"],
-        "rationale_json": {
-            "matched_skills": r["matched_skills"],
-            "missing_skills": r["missing_skills"],
-            "seniority_fit": r["seniority_fit"],
-            "location_fit": r["location_fit"],
-            "rationale": r["rationale"]
-        },
-        "matched_at": datetime.datetime.utcnow().isoformat()
-    } for r in results[:top_n]]
-
-    if items:
-        db.matches.insert_many(items)
-
-    return {"job_title": job_title, "matched": len(items)}
-
-
-@app.get("/match")
-def get_match(job_title: str, k: int = 10):
-    job = db.job_postings.find_one({"title": job_title})
-    if not job:
-        raise HTTPException(404, "job not found")
-
-    cur = db.matches.find(
-        {"job_ref": str(job.get("_id"))}
-    ).sort("score", -1).limit(k)
-
-    return {
-        "items": [{
-            "candidate_ref": m.get("candidate_ref"),
-            "score": m.get("score"),
-            "rationale_json": m.get("rationale_json")
-        } for m in cur]
-    }
+    return {"results": final}
