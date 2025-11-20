@@ -1,9 +1,10 @@
 import os
 import requests
+import json
 
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-MODEL = "google/gemini-flash-1.5"  # fast + free
+MODEL = "qwen/qwen-2.5-7b-instruct"
 
 HEADERS = {
     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -11,10 +12,9 @@ HEADERS = {
     "X-Title": os.getenv("OPENROUTER_X_TITLE", "resume-analyser")
 }
 
-
 def extract_cv_data(text: str):
     prompt = f"""
-You are an ATS resume parser. Extract the CV into this EXACT JSON schema:
+Extract ONLY valid JSON with this structure:
 
 {{
   "full_name": "",
@@ -25,30 +25,37 @@ You are an ATS resume parser. Extract the CV into this EXACT JSON schema:
   "summary": ""
 }}
 
-Return ONLY JSON.
+Do NOT add explanations. Do NOT add comments.
+Return JUST the JSON.
+
 CV TEXT:
 {text}
 """
 
     payload = {
         "model": MODEL,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ]
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 1500
     }
 
-    r = requests.post(f"{BASE_URL}/chat/completions",
-                      headers=HEADERS, json=payload, timeout=40)
+    response = requests.post(f"{BASE_URL}/chat/completions", headers=HEADERS, json=payload)
+    data = response.json()
 
-    out = r.json()
-    raw = out["choices"][0]["message"]["content"]
+    # ---------------- DEBUG -----------------
+    print("\n\n================== RAW LLM OUTPUT ==================\n")
+    print(json.dumps(data, indent=2))
+    print("\n===================================================\n")
+    # -------------------------------------------
 
-    # Try to parse JSON
-    import json
+    # extract raw text from LLM
+    raw = data["choices"][0]["message"]["content"]
+
+    # Try parsing normally
     try:
         return json.loads(raw)
     except:
-        # cleanup
+        # Attempt to extract JSON only
         start = raw.find("{")
         end = raw.rfind("}") + 1
-        return json.loads(raw[start:end])
+        cleaned = raw[start:end]
+        return json.loads(cleaned)

@@ -25,7 +25,7 @@ services:
       DATA_LAKE_ROOT: /app/ops/datalake
 
       # ---------- OPENROUTER CONFIG (EXTRACTION + MATCHING) ----------
-      OPENROUTER_API_KEY: "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"
+      OPENROUTER_API_KEY: "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"
       OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1"
       OPENROUTER_HTTP_REFERRER: "http://resume-analyser"
       OPENROUTER_X_TITLE: "resume-analyser"

@@ -1,98 +1,151 @@
 import os
-import fitz  # pymupdf
-import numpy as np
-from fastapi import FastAPI, UploadFile, Form, HTTPException
+import json
+import fitz
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pymongo import MongoClient
 
-from llm.extract_cv_openrouter import extract_cv_data
-from llm.embeddings import embed_text
-from llm.matcher_openrouter import score_candidate_against_job
+from app.db import save_candidate, load_last_candidate, load_jobs
+from app.llm.extract_cv_openrouter import extract_cv_data
+from app.llm.matcher_openrouter import match_candidate_to_jobs
+from app.llm.openrouter_client import call_openrouter
 
-app = FastAPI()
+app = FastAPI(title="Resume Matcher API")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-MONGO_URL = os.getenv("MONGO_URL")
-DB_NAME = os.getenv("DB_NAME", "matcher")
-
-client = MongoClient(MONGO_URL)
-db = client[DB_NAME]
-candidates = db.candidates
-jobs = db.jobs
-
-
-def cosine_similarity(a, b):
-    a = np.array(a)
-    b = np.array(b)
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
-
-
+# ============================
+# Health
+# ============================
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "OK"}
 
-
-@app.post("/upload_cv")
-async def upload_cv(file: UploadFile, full_name: str = Form(...)):
-    # ---- PDF extraction ----
+# ============================
+# TEST OPENROUTER
+# ============================
+@app.get("/test_openrouter")
+def test_openrouter():
     try:
-        pdf = fitz.open(stream=await file.read(), filetype="pdf")
+        resp = call_openrouter(
+            model="qwen/qwen-2.5-7b-instruct",
+            messages=[{"role": "user", "content": "Say YES"}],
+            max_tokens=10,
+        )
+        return {"status": "OK", "response": resp}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+# ============================
+# PDF extraction
+# ============================
+def extract_text_from_pdf(file: UploadFile):
+    try:
+        pdf = fitz.open(stream=file.file.read(), filetype="pdf")
         text = ""
         for page in pdf:
             text += page.get_text()
+        pdf.close()
+        return text
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"PDF extraction failed: {e}")
+        raise Exception(f"PDF extraction failed: {e}")
 
-    # ---- LLM #1 extraction ----
-    llm_data = extract_cv_data(text)
-    llm_data["full_name"] = full_name
+# ============================
+# TEST EXTRACT
+# ============================
+@app.post("/test_extract")
+async def test_extract(file: UploadFile = File(...)):
+    try:
+        text = extract_text_from_pdf(file)
+        result = extract_cv_data(text)
+        return result
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
 
-    # ---- Compute CV vector ----
-    cv_vector = embed_text(text)
-    llm_data["vector"] = cv_vector
+# ============================
+# FIX: Normalisation candidate object
+# ============================
+def normalize_candidate(candidate_dict):
 
-    inserted = candidates.insert_one(llm_data)
+    class CandidateObj:
+        pass
 
-    return {"candidate_id": str(inserted.inserted_id), **llm_data}
+    c = CandidateObj()
 
+    # copy dict → object
+    for k, v in candidate_dict.items():
+        setattr(c, k, v)
 
-@app.get("/match/{candidate_id}")
-def match_candidate(candidate_id: str):
-    cv = candidates.find_one({"_id": candidate_id})
-    if not cv:
-        raise HTTPException(404, "Candidate not found")
+    # 🔥 FIX PRINCIPAL
+    if hasattr(c, "skills_detected"):
+        pass
+    elif hasattr(c, "skills"):
+        c.skills_detected = c.skills
+    else:
+        c.skills_detected = []
 
-    cv_vector = cv["vector"]
+    # 🔥 rendre robuste
+    if not hasattr(c, "experiences"):
+        c.experiences = []
 
-    # ---- VECTOR SEARCH top 10 ----
-    scored = []
-    for job in jobs.find():
-        if "vector" not in job:
-            continue
+    if not hasattr(c, "summary"):
+        c.summary = ""
 
-        sim = cosine_similarity(cv_vector, job["vector"])
-        scored.append((sim, job))
+    if not hasattr(c, "full_name"):
+        c.full_name = ""
 
-    top10 = sorted(scored, key=lambda x: x[0], reverse=True)[:10]
+    return c
 
-    # ---- LLM #2 reranking ----
-    results = []
-    for sim, job in top10:
-        llm_score = score_candidate_against_job(cv, job)
-        results.append({
-            "job": job,
-            "similarity": sim,
-            "score": llm_score.get("score", 0),
-            "reason": llm_score.get("reason", "")
-        })
+# ============================
+# TEST MATCHING
+# ============================
+@app.get("/test_matching")
+def test_matching():
 
-    # Return top 5 ranked by score
-    final = sorted(results, key=lambda x: x["score"], reverse=True)[:5]
+    jobs = load_jobs(limit=20)
+    if not jobs:
+        return {"status": "ERROR", "detail": "No jobs in DB"}
 
-    return {"results": final}
+    candidate_dict = load_last_candidate()
+    if not candidate_dict:
+        return {"status": "ERROR", "detail": "No candidate in DB"}
+
+    # 🔥 FIX: always normalize
+    candidate = normalize_candidate(candidate_dict)
+
+    try:
+        matches = match_candidate_to_jobs(candidate, jobs)
+        return {"status": "OK", "matches": matches}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+# ============================
+# WORKFLOW COMPLET
+# ============================
+@app.post("/upload_cv")
+async def upload_cv(
+    file: UploadFile = File(...),
+    full_name: str = Form(...)
+):
+    try:
+        text = extract_text_from_pdf(file)
+        cv_data = extract_cv_data(text)
+        cv_data["full_name"] = full_name
+
+        save_candidate(cv_data)
+
+        jobs = load_jobs(limit=50)
+
+        candidate = normalize_candidate(cv_data)
+
+        matches = match_candidate_to_jobs(candidate, jobs)
+
+        return {"candidate": cv_data, "matches": matches}
+
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}

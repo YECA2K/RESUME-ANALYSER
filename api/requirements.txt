@@ -12,3 +12,4 @@ python-multipart==0.0.9
 langdetect==1.0.9
 boto3
 botocore
+PyMuPDF==1.24.3

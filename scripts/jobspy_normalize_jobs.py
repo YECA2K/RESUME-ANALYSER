@@ -12,43 +12,45 @@ RAW_DIR = os.path.join(DATA_LAKE, "raw", "jobs")
 API = os.environ.get("API_URL", "http://api:8000")
 
 def map_row(row):
-    """Transforme une ligne brute en format normalisé."""
+    """Transforme une ligne brute en format normalisé, robustement."""
+
+    # --- Location ---
+    loc_raw = row.get("location")
     loc = {"city": None, "country": None, "remote": None}
 
-    if isinstance(row.get("location"), str):
-        city = row["location"].split(",")[0].strip()
-        loc["city"] = city or None
+    if isinstance(loc_raw, str):
+        loc["city"] = loc_raw.split(",")[0].strip()
+    elif isinstance(loc_raw, dict):  # jobspy change parfois le format
+        loc["city"] = loc_raw.get("city") or None
+        loc["country"] = loc_raw.get("country") or None
 
-    if row.get("is_remote") is True:
+    if row.get("is_remote") in [True, "true", "full", "FULL"]:
         loc["remote"] = "full"
 
+    # --- Description ---
+    desc = row.get("description")
+    if isinstance(desc, list):
+        desc = " ".join(desc)
+    if desc is None:
+        desc = ""
+
+    # --- Safe fields ---
+    def safe(x):
+        return x if isinstance(x, str) else ""
+
     return {
-        "source": row.get("site") or "jobspy",
-        "url": row.get("job_url"),
-        "title": row.get("title") or "Unknown",
-        "company": row.get("company"),
+        "source": safe(row.get("site")) or "jobspy",
+        "url": safe(row.get("job_url")),
+        "title": safe(row.get("title")) or "Unknown",
+        "company": safe(row.get("company")),
         "location": loc,
-        "contract_type": row.get("job_type"),
+        "contract_type": safe(row.get("job_type")),
         "seniority": None,
         "skills_required": [],
         "skills_nice": [],
-        "description_text": row.get("description") or "",
-        "collected_at": str(row.get("date_posted") or ""),
+        "description_text": desc,
+        "collected_at": safe(str(row.get("date_posted"))),
     }
-
-def clean_payload(payload):
-    """Remplace NaN / inf par None pour rendre JSON valide."""
-    for k, v in payload.items():
-        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-            payload[k] = None
-        elif isinstance(v, dict):
-            payload[k] = clean_payload(v)
-        elif isinstance(v, list):
-            payload[k] = [
-                None if (isinstance(x, float) and (math.isnan(x) or math.isinf(x))) else x
-                for x in v
-            ]
-    return payload
 
 def main():
     print(f"[INFO] DATA_LAKE = {DATA_LAKE}")

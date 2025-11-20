@@ -1,74 +1,47 @@
-# api/app/schemas.py
-from typing import Optional, List
-from pydantic import BaseModel, field_validator
-
-class Location(BaseModel):
-    city: Optional[str] = None
-    country: Optional[str] = None
-    remote: Optional[str] = None   # "full" | "hybrid" | "no"
-
-    @field_validator("*", mode="before")
-    @classmethod
-    def empty_to_none(cls, v):
-        if isinstance(v, str) and not v.strip():
-            return None
-        return v
+from pydantic import BaseModel, Field
+from typing import List, Optional
 
 
-class JobPostingIn(BaseModel):
-    source: str = "jobspy"
-    url: Optional[str] = None
-    title: str
-    company: Optional[str] = None
-    location: Location = Location()
-    contract_type: Optional[str] = None
-    seniority: Optional[str] = None
-    skills_required: List[str] = []
-    skills_nice: List[str] = []
-    description_text: str = ""
-    collected_at: Optional[str] = None
+# ===============================
+#   CV EXTRACTED DATA SCHEMA
+# ===============================
 
-    # --------- Nettoyage prévention NaN / floats invalides ----------
-    @field_validator(
-        "title", "company", "contract_type", "seniority",
-        "description_text", mode="before")
-    @classmethod
-    def sanitize_str(cls, v):
-        import math
-        if v is None:
-            return None
-        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-            return None
-        return str(v).strip() or None
-
-    @field_validator("skills_required", "skills_nice", mode="before")
-    @classmethod
-    def sanitize_list(cls, v):
-        if not v:
-            return []
-        if isinstance(v, list):
-            return [str(x).strip() for x in v if str(x).strip()]
-        return []
-
-
-# ===== CANDIDATES ======
-
-class Experience(BaseModel):
+class CVExperience(BaseModel):
     title: Optional[str] = None
     company: Optional[str] = None
-    years: Optional[float] = None
+    years: Optional[str] = None
 
-class Education(BaseModel):
+
+class CVLanguage(BaseModel):
+    name: Optional[str] = None
+    level: Optional[str] = None
+
+
+class CVEducation(BaseModel):
     degree: Optional[str] = None
     school: Optional[str] = None
-    year: Optional[int] = None
+    year: Optional[str] = None
 
-class CandidateIn(BaseModel):
+
+class CandidateCV(BaseModel):
     full_name: str
-    email: Optional[str] = None
-    location: Optional[Location] = None
-    skills_declared: List[str] = []
-    experiences: List[Experience] = []
-    education: List[Education] = []
-    languages: List[str] = []
-    profile_source: str = "form|cv"
+    summary: Optional[str]
+    skills_detected: List[str] = []
+    languages: List[CVLanguage] = []
+    experiences: List[CVExperience] = []
+    education: List[CVEducation] = []
+# ===============================
+#      JOB OFFER SCHEMA
+# ===============================
+
+class JobOffer(BaseModel):
+    title: Optional[str] = None
+    company: Optional[str] = None
+    url: Optional[str] = None
+    description_text: Optional[str] = None
+    location: Optional[dict] = None
+    contract_type: Optional[str] = None
+    skills_required: List[str] = []
+    skills_nice: List[str] = []
+    seniority: Optional[str] = None
+    source: Optional[str] = None
