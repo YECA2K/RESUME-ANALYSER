@@ -1,13 +1,14 @@
 import os
 import json
 import fitz
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db import save_candidate, load_last_candidate, load_jobs
+from app.db import save_candidate, load_last_candidate, load_jobs, save_job
 from app.llm.extract_cv_openrouter import extract_cv_data
 from app.llm.matcher_openrouter import match_candidate_to_jobs
 from app.llm.openrouter_client import call_openrouter
+from app.schemas import JobOffer
 
 app = FastAPI(title="Resume Matcher API")
 
@@ -26,6 +27,7 @@ app.add_middleware(
 def health():
     return {"status": "OK"}
 
+
 # ============================
 # TEST OPENROUTER
 # ============================
@@ -41,6 +43,7 @@ def test_openrouter():
     except Exception as e:
         return {"status": "ERROR", "detail": str(e)}
 
+
 # ============================
 # PDF extraction
 # ============================
@@ -55,6 +58,7 @@ def extract_text_from_pdf(file: UploadFile):
     except Exception as e:
         raise Exception(f"PDF extraction failed: {e}")
 
+
 # ============================
 # TEST EXTRACT
 # ============================
@@ -66,6 +70,7 @@ async def test_extract(file: UploadFile = File(...)):
         return result
     except Exception as e:
         return {"status": "ERROR", "detail": str(e)}
+
 
 # ============================
 # FIX: Normalisation candidate object
@@ -101,6 +106,7 @@ def normalize_candidate(candidate_dict):
 
     return c
 
+
 # ============================
 # TEST MATCHING
 # ============================
@@ -115,7 +121,7 @@ def test_matching():
     if not candidate_dict:
         return {"status": "ERROR", "detail": "No candidate in DB"}
 
-    # 🔥 FIX: always normalize
+    # 🔥 always normalize
     candidate = normalize_candidate(candidate_dict)
 
     try:
@@ -123,6 +129,7 @@ def test_matching():
         return {"status": "OK", "matches": matches}
     except Exception as e:
         return {"status": "ERROR", "detail": str(e)}
+
 
 # ============================
 # WORKFLOW COMPLET
@@ -149,3 +156,53 @@ async def upload_cv(
 
     except Exception as e:
         return {"status": "ERROR", "detail": str(e)}
+
+
+# ============================
+# JOB INGESTION FOR AIRFLOW
+# ============================
+@app.post("/jobs/ingest")
+def ingest_job(job: JobOffer):
+    """
+    Airflow calls this to insert normalized job offers into MongoDB.
+    """
+    try:
+        save_job(job.dict())
+        return {"status": "OK", "inserted": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================
+# DIRECT LLM TEST (DEBUG MATCHING)
+# ============================
+@app.get("/test_llm_direct")
+def test_llm_direct():
+    """
+    Sends a simple prompt to the LLM to verify JSON output.
+    """
+    from app.llm.matcher_openrouter import call_llm
+
+    system_prompt = "You are a job-matching AI. Return JSON only."
+    user_prompt = """
+Candidate:
+Skills = ["Python", "AWS", "Airflow"]
+Experiences = ["Data Engineer 3 years"]
+
+Job:
+Title: Python Data Engineer
+Description: Looking for Python, ETL, Airflow, AWS.
+
+Return ONLY JSON:
+[
+  {"job_index": 1, "score": 0.90}
+]
+"""
+
+    response = call_llm(system_prompt, user_prompt)
+
+    try:
+        parsed = json.loads(response)
+        return {"status": "OK", "raw": response, "parsed": parsed}
+    except:
+        return {"status": "RAW_ONLY", "raw": response}
