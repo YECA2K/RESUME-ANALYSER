@@ -1,42 +1,71 @@
-from datetime import datetime
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+from datetime import datetime
+
+PYTHON = "python"
 
 with DAG(
     dag_id="jobs_jobspy_daily",
     start_date=datetime(2025, 10, 1),
-    schedule_interval="@daily",
+    schedule_interval="@daily",  # exécution automatique chaque 24h
     catchup=False,
-    description="Collect with JobSpy (Indeed 24h) → normalize → match",
+    description="Scraping → Normalize → Embeddings → Cleanup (jobs IT)",
 ) as dag:
 
+    # Environnement commun pour tous les scripts
+    common_env = {
+        "PYTHONPATH": "/app",                # pour pouvoir importer app.*
+        "DATA_LAKE_ROOT": "/workspace/datalake",
+        "MONGO_URL": "mongodb://mongo:27017",
+        "DB_NAME": "matcher",
+        "API_URL": "http://api:8000",
+    }
+
+    # 1) SCRAPING IT (24h dernières offres)
     collect = BashOperator(
         task_id="collect_jobspy",
         env={
-            "PYTHONUNBUFFERED": "1",
+            **common_env,
             "DATA_LAKE_ROOT": "/workspace/datalake",
         },
         bash_command=(
-            "python -u /workspace/scripts/jobspy_collect.py "
-            "--queries ' ,ingénieur,développeur,technicien,consultant,chef de projet,manager,responsable,architecte,cloud,devops,data,analyste,commercial,marketing,rh,comptable,finance,logistique,qualité,sécurité,full stack,frontend,backend,IA,réseau,support,stage,alternance,junior,senior' "
-            "--locations 'France,Remote,Paris,Lyon,Marseille,Toulouse,Lille,Bordeaux,Nantes,Strasbourg,Montpellier,Rennes,Nice,Grenoble,Reims,Le Havre,Saint-Étienne,Toulon,Dijon,Angers,Nîmes,Clermont-Ferrand,Aix-en-Provence,Brest,Tours,Orléans,Metz,Besançon,Rouen,Perpignan' "
-            "--countries 'france' "
-            "--sites indeed "
-            "--pages 7 --days 1 "
-            "--append 1 "
-            "--outfile jobspy_all.jsonl"
+            f"{PYTHON} /workspace/scripts/jobspy_collect.py "
+            "--days 1 "                # ↩ 24h = 1 jour
+            "--max_per_call 400 "      # ↩ max par (term, location)
+            "--max_total 2500 "        # ↩ limite globale par run
+            "--keep_days 10 "          # ↩ garde les fichiers JSONL 10 jours
+            "--min_it_jobs 500"        # ↩ warning si < 500 jobs IT collectés
         ),
     )
 
+    # 2) NORMALISATION + FILTRE IT FINAL + ENVOI API → Mongo
     normalize = BashOperator(
         task_id="normalize_jobspy",
-        env={"API_URL": "http://resume-analyser-api-1:8000"},
-        bash_command="python /workspace/scripts/jobspy_normalize_jobs.py"
+        env={
+            **common_env,
+            "API_URL": "http://api:8000",
+        },
+        bash_command=f"{PYTHON} /workspace/scripts/jobspy_normalize_jobs.py",
     )
 
-    match_demo = BashOperator(
-        task_id="match_demo",
-        bash_command="curl -X POST 'http://api:8000/match/run?job_title=Data%20Engineer'"
+    # 3) EMBEDDINGS (pour les jobs sans embedding, au cas où)
+    embed = BashOperator(
+        task_id="embed_jobs",
+        env={
+            **common_env,
+        },
+        bash_command=f"{PYTHON} /workspace/scripts/embed_jobs.py",
     )
 
-    collect >> normalize >> match_demo
+    # 4) CLEANUP (Mongo + datalake) sur 10 jours
+    cleanup = BashOperator(
+        task_id="cleanup_old_data",
+        env={
+            **common_env,
+            "KEEP_DAYS": "10",   # ↩ suppression jobs + fichiers > 10 jours
+        },
+        bash_command=f"{PYTHON} /workspace/scripts/cleanup.py",
+    )
+
+    # Ordre du pipeline
+    collect >> normalize >> embed >> cleanup

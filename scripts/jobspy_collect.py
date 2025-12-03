@@ -1,119 +1,283 @@
-import os, argparse, json
-from datetime import date
+import os
+import argparse
+from datetime import datetime, timedelta
 import pandas as pd
 from jobspy import scrape_jobs
 
-DATA_LAKE = os.environ.get("DATA_LAKE_ROOT", "./ops/datalake")
+# --------------------------------------------------
+# CONFIG DOSSIER DATALAKE
+# --------------------------------------------------
+DATA_LAKE = os.environ.get("DATA_LAKE_ROOT", "/workspace/datalake")
 RAW_DIR = os.path.join(DATA_LAKE, "raw", "jobs")
 os.makedirs(RAW_DIR, exist_ok=True)
 
-def _csv(s: str):
-    parts = [t for t in (s or "").split(",")]
-    return [p.strip() for p in parts if p is not None]
+# --------------------------------------------------
+# MOTS-CLÉS / PROFILS IT POUR LE SCRAPING
+# --------------------------------------------------
+IT_SEARCH_TERMS = [
+    "data engineer",
+    "data scientist",
+    "data analyst",
+    "bi engineer",
+    "bi developer",
+    "machine learning engineer",
+    "ml engineer",
+    "ai engineer",
+    "cloud engineer",
+    "cloud architect",
+    "devops engineer",
+    "site reliability engineer",
+    "sre",
+    "backend developer",
+    "frontend developer",
+    "fullstack developer",
+    "full stack developer",
+    "python developer",
+    "java developer",
+    "software engineer",
+    "software developer",
+    "ingénieur systèmes",
+    "ingénieur systèmes et réseaux",
+    "administrateur systèmes et réseaux",
+    "cybersecurity engineer",
+    "ingénieur cybersécurité",
+    "analyste cybersécurité",
+    "ingénieur data",
+    "ingénieur informatique",
+]
 
-def _existing_urls(jsonl_path: str) -> set:
-    urls = set()
-    if not os.path.isfile(jsonl_path):
-        return urls
-    with open(jsonl_path, "r", encoding="utf-8") as f:
-        for line in f:
-            try:
-                u = json.loads(line).get("job_url")
-                if u:
-                    urls.add(u)
-            except Exception:
-                continue
-    return urls
+# Keywords IT pour filtrage sur titre + description
+TITLE_IT_KEYWORDS = [
+    "data engineer", "data scientist", "data analyst",
+    "data", "engineer", "ingénieur", "ingenieur",
+    "developer", "développeur", "developpeur",
+    "devops", "architect", "architecte",
+    "scientist", "analyst", "analyste",
+    "fullstack", "full stack", "backend", "frontend",
+    "sre", "sysadmin", "site reliability",
+    "administrateur système", "administrateur systeme",
+    "cloud engineer", "cloud architect",
+    "consultant data", "consultant bi",
+    "bi engineer", "bi developer",
+    "ml engineer", "machine learning engineer",
+    "ai engineer", "software engineer",
+    "software developer", "ingénieur logiciel",
+    "ingénieur systèmes", "ingénieur systèmes et réseaux",
+    "cybersecurity", "cybersécurité", "sécurité informatique",
+    "devsecops", "dev sec ops",
+]
 
-def _append_jsonl(jsonl_path: str, df: pd.DataFrame):
-    with open(jsonl_path, "a", encoding="utf-8") as f:
-        for rec in df.to_dict(orient="records"):
-            # Convert non-serializable objects (dates, timestamps) to strings
-            for k, v in rec.items():
-                if hasattr(v, "isoformat"):
-                    rec[k] = v.isoformat()
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+TEXT_IT_KEYWORDS = [
+    # langages
+    "python", "java", "javascript", "typescript",
+    "node.js", "nodejs", "node js",
+    "c#", "csharp", ".net", "dotnet",
+    "c++", "golang", "go lang", "rust",
+    "php", "ruby", "scala", "kotlin",
+    " r ",  # éviter faux positifs
+
+    # data / sql / bdd
+    "sql", "postgres", "postgresql", "mysql", "mariadb", "oracle",
+    "mongodb", "mongo db", "mongo-db", "redis", "snowflake",
+    "bigquery", "big query", "redshift", "synapse",
+    "data warehouse", "datawarehouse", "data lake", "datalake",
+
+    # outils / devops / cloud
+    "docker", "kubernetes", "k8s",
+    "git", "github", "gitlab", "bitbucket",
+    "terraform", "ansible",
+    "airflow", "dbt", "spark", "hadoop", "kafka",
+    "rest api", "restful", "microservices", "grpc",
+    "serverless", "lambda", "ecs", "eks", "gke",
+    "aws", "amazon web services", "azure", "gcp", "google cloud",
+
+    # data science / stats
+    "machine learning", "deep learning",
+    "pandas", "numpy", "scikit-learn", "sklearn",
+    "statistique", "statistiques", "statistics",
+    "probabilité", "probabilités", "probability",
+    "modélisation", "modelisation", "modélisation statistique",
+    "feature engineering", "régression", "classification",
+    "nlp", "natural language processing",
+
+    # sécurité
+    "pentest", "pentester", "penetration testing",
+    "owasp", "iso 27001", "rgpd", "siem", "soc",
+
+    # infra
+    "linux", "unix", "bash", "shell scripting",
+    "système et réseaux", "systèmes et réseaux",
+]
+
+
+def cleanup_old_files(keep_days: int = 10):
+    cutoff = datetime.utcnow() - timedelta(days=keep_days)
+    for fp in os.listdir(RAW_DIR):
+        if fp.endswith(".jsonl"):
+            fpath = os.path.join(RAW_DIR, fp)
+            if os.path.getmtime(fpath) < cutoff.timestamp():
+                print(f"[CLEANUP] Removing old file: {fpath}")
+                os.remove(fpath)
+
+
+def is_it_row(row) -> bool:
+    """
+    Filtre IT côté scraping :
+    - check titre + description avec keywords IT
+    """
+    title = str(row.get("title", "") or "")
+    desc = str(row.get("description", "") or "")
+    text = f"{title} {desc}".lower()
+
+    if not text.strip():
+        return False
+
+    for kw in TITLE_IT_KEYWORDS:
+        if kw.lower() in title.lower():
+            return True
+
+    for kw in TEXT_IT_KEYWORDS:
+        if kw.lower() in text:
+            return True
+
+    return False
+
+
+def filter_it(df: pd.DataFrame) -> pd.DataFrame:
+    if "title" not in df.columns:
+        return df.iloc[0:0]
+
+    if "description" not in df.columns:
+        df["description"] = ""
+
+    mask = df.apply(is_it_row, axis=1)
+    return df[mask]
 
 
 def main():
-    p = argparse.ArgumentParser("JobSpy Indeed collector (24h, append, dedup)")
-    p.add_argument("--queries", default=(
-        " ,engineer,developer,manager,architect,cloud,ai,data,hr,finance,"
-        "marketing,sales,security,analyst,consultant,full stack,frontend,"
-        "backend,devops,product,project"
-    ))
-    p.add_argument("--locations", default="France,Remote,Paris,Lyon")
-    p.add_argument("--countries", default="france,uk,germany,spain,italy,netherlands,belgium,usa,canada")
-    p.add_argument("--sites", default="indeed", help="Keep for compatibility")
-    p.add_argument("--pages", type=int, default=3)
-    p.add_argument("--days", type=int, default=1)
-    p.add_argument("--outfile", default=f"jobspy_all.jsonl")
-    p.add_argument("--append", type=int, default=1)
-    args = p.parse_args()
+    parser = argparse.ArgumentParser()
+    # 👉 pour le seed initial : --days 30
+    parser.add_argument("--days", type=int, default=30)
+    parser.add_argument("--max_per_call", type=int, default=400)  # par (term,location)
+    parser.add_argument("--max_total", type=int, default=20000)
+    parser.add_argument("--keep_days", type=int, default=10)
+    parser.add_argument("--min_it_jobs", type=int, default=3000)
+    args = parser.parse_args()
 
-    queries   = _csv(args.queries)
-    locations = _csv(args.locations)
-    countries = _csv(args.countries)
-    per_site  = min(50 * args.pages, 1000)
-    out_path  = os.path.join(RAW_DIR, args.outfile)
+    sites = ["indeed"]  # stable en France, google bloque ton IP de toute façon
 
-    print(f"[INFO] Output file: {out_path}")
-    parts = []
+    locations = [
+        "France",
+        "Paris",
+        "Lyon",
+        "Marseille",
+        "Toulouse",
+        "Bordeaux",
+        "Lille",
+        "Nice",
+        "Nantes",
+        "Strasbourg",
+        "Rennes",
+        "Remote",
+    ]
 
-    for q in queries:
-        for loc in locations:
-            for country in countries:
+    hours = args.days * 24
+
+    print(f"[INFO] Scraping with hours_old={hours}")
+    print(f"[INFO] Sites: {sites}")
+    print(f"[INFO] Locations: {locations}")
+    print(f"[INFO] Search terms IT: {IT_SEARCH_TERMS}")
+
+    all_jobs_global = []
+    per_site_frames = {s: [] for s in sites}
+
+    for site in sites:
+        for term in IT_SEARCH_TERMS:
+            for loc in locations:
                 try:
-                    df = scrape_jobs(
-                        site_name=["indeed"],
-                        search_term=q,
-                        location=loc,
-                        results_wanted=per_site,
-                        hours_old=args.days * 24,
-                        country_indeed=country,
-                        description_format="markdown",  # include job descriptions
-                    )
-                    if df is None or df.empty:
-                        print(f"[WARN] 0 rows for '{q or '(all)'}' @ {loc} ({country})")
-                        continue
-                    parts.append(df)
-                    print(f"[OK] {len(df)} rows for '{q or '(all)'}' @ {loc} ({country})")
-                except Exception as e:
-                    print(f"[ERROR] {e}")
+                    print(f"[INFO] Scraping {site} @ {loc} – term='{term}'")
 
-    if not parts:
-        print("No results.")
+                    df_site = scrape_jobs(
+                        site_name=[site],
+                        search_term=term,
+                        location=loc,
+                        results_wanted=args.max_per_call,
+                        hours_old=hours,
+                        country_indeed="France",
+                        description_format="markdown",
+                    )
+
+                except Exception as e:
+                    print(f"[ERROR] {site} failed for {loc} (term='{term}'): {e}")
+                    continue
+
+                if df_site is None or df_site.empty:
+                    print(f"[WARN] No jobs for {site} @ {loc} with term='{term}'")
+                    continue
+
+                before = len(df_site)
+                df_site = filter_it(df_site)
+                after = len(df_site)
+                print(f"[INFO] {site} @ {loc} term='{term}' → {after}/{before} IT jobs")
+
+                if df_site.empty:
+                    continue
+
+                per_site_frames[site].append(df_site)
+                all_jobs_global.append(df_site)
+
+        # résumé site
+        if per_site_frames[site]:
+            df_site_all = pd.concat(per_site_frames[site], ignore_index=True)
+            print(f"[INFO] {site}: {len(df_site_all)} IT jobs collectés (avant dédoublonnage)")
+        else:
+            print(f"[WARN] Aucun job IT collecté pour {site}")
+
+    if not all_jobs_global:
+        print("[WARN] No jobs collected from any site/location")
         return
 
-    new_df = pd.concat(parts, ignore_index=True)
-    if "job_url" in new_df.columns:
-        before = len(new_df)
-        new_df = new_df.drop_duplicates(subset=["job_url"])
-        print(f"[BATCH DEDUP] {before} → {len(new_df)} unique")
+    df = pd.concat(all_jobs_global, ignore_index=True)
+    print(f"[INFO] Total jobs AVANT dédoublonnage: {len(df)}")
 
-    if args.append:
-        seen = _existing_urls(out_path)
-        if seen and "job_url" in new_df.columns:
-            new_df = new_df[~new_df["job_url"].isin(seen)]
-            print(f"[HIST DEDUP] {len(new_df)} new unique rows vs history")
+    # Dédoublonnage URL
+    if "job_url" in df.columns:
+        before = len(df)
+        df = df.drop_duplicates(subset=["job_url"])
+        after = len(df)
+        print(f"[INFO] URLs uniques: {df['job_url'].nunique()}")
+        print(f"[INFO] Doublons supprimés (même job_url): {before - after}")
 
-        if len(new_df) == 0:
-            print("[APPEND] No new rows to append.")
-            return
+    # Dédoublonnage (site,title,company,location)
+    dedup_cols = [c for c in ["site", "title", "company", "location"] if c in df.columns]
+    if dedup_cols:
+        before = len(df)
+        df = df.drop_duplicates(subset=dedup_cols)
+        after = len(df)
+        print(f"[INFO] Doublons supprimés (combinaison {dedup_cols}): {before - after}")
 
-        tmp = out_path + ".tmp"
-        _append_jsonl(tmp, new_df)
-        if not os.path.exists(out_path):
-            os.replace(tmp, out_path)
-        else:
-            with open(out_path, "a", encoding="utf-8") as fout, open(tmp, "r", encoding="utf-8") as fin:
-                for line in fin:
-                    fout.write(line)
-            os.remove(tmp)
-        print(f"[APPEND] +{len(new_df)} rows → {out_path}")
-    else:
-        new_df.to_json(out_path, orient="records", lines=True, force_ascii=False)
-        print(f"[WRITE] {len(new_df)} rows → {out_path}")
+    # Limite globale
+    if len(df) > args.max_total:
+        df = df.sample(args.max_total, random_state=42)
+        print(f"[INFO] Échantillonnage aléatoire à max_total={args.max_total}")
+
+    # Check de volume IT minimal
+    if len(df) < args.min_it_jobs:
+        print(f"[WARN] Seulement {len(df)} jobs IT après dédoublonnage (< {args.min_it_jobs})")
+
+    if "site" in df.columns:
+        print("[INFO] Jobs par site APRÈS dédoublonnage :")
+        print(df["site"].value_counts())
+
+    print(f"[FINAL] Total jobs sauvegardés: {len(df)}")
+
+    out_file = os.path.join(RAW_DIR, "jobspy_all.jsonl")
+    df.to_json(out_file, orient="records", lines=True, force_ascii=False)
+    print(f"[FINAL] Saved {len(df)} jobs into {out_file}")
+
+    cleanup_old_files(args.keep_days)
+    print("[DONE]")
+
 
 if __name__ == "__main__":
     main()

@@ -1,61 +1,89 @@
-import os
-import requests
 import json
+from .openrouter_client import call_openrouter
 
-OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
-BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 MODEL = "qwen/qwen-2.5-7b-instruct"
 
-HEADERS = {
-    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-    "HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERRER", "http://resume-analyser"),
-    "X-Title": os.getenv("OPENROUTER_X_TITLE", "resume-analyser")
-}
 
-def extract_cv_data(text: str):
+def extract_cv_data(text: str) -> dict:
+    """
+    Utilise OpenRouter pour extraire un CV structuré depuis du texte brut.
+    On force un schéma JSON très précis.
+    """
+
     prompt = f"""
-Extract ONLY valid JSON with this structure:
+Tu es un extracteur de CV très strict.
+
+À partir du texte suivant, retourne UNIQUEMENT un JSON valide avec ce schéma EXACT :
 
 {{
-  "full_name": "",
-  "skills": [],
-  "languages": [{{"name": "", "level": ""}}],
-  "experiences": [{{"title": "", "company": "", "years": ""}}],
-  "education": [{{"degree": "", "school": "", "year": ""}}],
-  "summary": ""
+  "full_name": "string",
+  "summary": "string",
+  "skills": ["string", "..."],
+  "languages": ["string", "..."],
+  "experiences": [
+    {{
+      "title": "string",
+      "company": "string",
+      "period": "string",
+      "summary": "string"
+    }}
+  ],
+  "education": [
+    {{
+      "title": "string",
+      "institution": "string",
+      "period": "string"
+    }}
+  ]
 }}
 
-Do NOT add explanations. Do NOT add comments.
-Return JUST the JSON.
+Règles IMPORTANTES :
+- Retourne UNIQUEMENT le JSON, sans texte avant ou après.
+- Si une info est inconnue, mets une chaîne vide "" ou une liste vide [].
+- "summary" doit être un paragraphe court (2–4 phrases) résumant le profil.
+- "skills" doit contenir des compétences techniques (langages, outils, cloud, etc.).
+- "languages" contient les langues parlées avec niveau.
+- "experiences" : max 6 expériences, les plus récentes, avec un petit résumé.
+- "education" : diplômes principaux.
 
-CV TEXT:
+TEXTE DU CV :
 {text}
 """
 
-    payload = {
-        "model": MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 1500
-    }
+    raw = call_openrouter(
+        model=MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1800,
+    )
 
-    response = requests.post(f"{BASE_URL}/chat/completions", headers=HEADERS, json=payload)
-    data = response.json()
+    # Parsing JSON robuste
+    def _empty():
+        return {
+            "full_name": "",
+            "summary": "",
+            "skills": [],
+            "languages": [],
+            "experiences": [],
+            "education": [],
+        }
 
-    # ---------------- DEBUG -----------------
-    print("\n\n================== RAW LLM OUTPUT ==================\n")
-    print(json.dumps(data, indent=2))
-    print("\n===================================================\n")
-    # -------------------------------------------
-
-    # extract raw text from LLM
-    raw = data["choices"][0]["message"]["content"]
-
-    # Try parsing normally
     try:
-        return json.loads(raw)
-    except:
-        # Attempt to extract JSON only
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        cleaned = raw[start:end]
-        return json.loads(cleaned)
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return _empty()
+        # s'assurer des clés
+        base = _empty()
+        base.update({k: v for k, v in data.items() if k in base})
+        return base
+    except Exception:
+        # tentative de rescue quand le modèle met du texte autour
+        try:
+            start = raw.find("{")
+            end = raw.rfind("}") + 1
+            if start >= 0 and end > start:
+                data = json.loads(raw[start:end])
+                base = _empty()
+                base.update({k: v for k, v in data.items() if k in base})
+                return base
+        except Exception:
+            return _empty()

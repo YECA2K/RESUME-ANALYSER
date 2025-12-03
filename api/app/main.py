@@ -1,15 +1,27 @@
 import os
 import json
-import fitz
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import fitz  # PyMuPDF
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db import save_candidate, load_last_candidate, load_jobs, save_job
+from app.db import (
+    save_candidate,
+    load_last_candidate,
+    load_jobs,
+    save_job,
+    find_top_jobs_by_embedding,
+    clean_mongo,
+)
 from app.llm.extract_cv_openrouter import extract_cv_data
 from app.llm.matcher_openrouter import match_candidate_to_jobs
 from app.llm.openrouter_client import call_openrouter
+from app.llm.embeddings import embed_text
 from app.schemas import JobOffer
 
+
+# ======================================================
+# FASTAPI INIT
+# ======================================================
 app = FastAPI(title="Resume Matcher API")
 
 app.add_middleware(
@@ -20,170 +32,349 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ============================
-# Health
-# ============================
+
+# ======================================================
+# HEALTH
+# ======================================================
 @app.get("/health")
 def health():
     return {"status": "OK"}
 
 
-# ============================
-# TEST OPENROUTER
-# ============================
+# ======================================================
+# TEST OPENROUTER (simple)
+# ======================================================
 @app.get("/test_openrouter")
 def test_openrouter():
     try:
         resp = call_openrouter(
             model="qwen/qwen-2.5-7b-instruct",
-            messages=[{"role": "user", "content": "Say YES"}],
+            messages=[{"role": "user", "content": "Réponds uniquement OUI"}],
             max_tokens=10,
         )
-        return {"status": "OK", "response": resp}
+        return {"status": "OK", "raw": resp}
     except Exception as e:
         return {"status": "ERROR", "detail": str(e)}
 
 
-# ============================
-# PDF extraction
-# ============================
-def extract_text_from_pdf(file: UploadFile):
+# ======================================================
+# PDF → TEXT
+# ======================================================
+def extract_text_from_pdf(file: UploadFile) -> str:
+    """
+    Lit le PDF en mémoire et renvoie le texte brut.
+    """
     try:
         pdf = fitz.open(stream=file.file.read(), filetype="pdf")
-        text = ""
-        for page in pdf:
-            text += page.get_text()
+        text = "".join(page.get_text() for page in pdf)
         pdf.close()
         return text
     except Exception as e:
         raise Exception(f"PDF extraction failed: {e}")
 
 
-# ============================
-# TEST EXTRACT
-# ============================
-@app.post("/test_extract")
-async def test_extract(file: UploadFile = File(...)):
-    try:
-        text = extract_text_from_pdf(file)
-        result = extract_cv_data(text)
-        return result
-    except Exception as e:
-        return {"status": "ERROR", "detail": str(e)}
+# ======================================================
+# TEXT BUILDERS POUR EMBEDDINGS
+# ======================================================
+def cv_to_text_for_embedding(cv: dict) -> str:
+    """
+    Construit un texte compact (summary + skills + expériences) pour l'embedding.
+    """
+    parts = []
+
+    if cv.get("summary"):
+        parts.append(cv["summary"])
+
+    skills = cv.get("skills") or []
+    if skills:
+        parts.append("Skills: " + ", ".join(skills))
+
+    for exp in cv.get("experiences", []):
+        if isinstance(exp, dict):
+            seg = " ".join(
+                [
+                    exp.get("title", "") or exp.get("position", ""),
+                    exp.get("company", ""),
+                    exp.get("period", "") or exp.get("years", ""),
+                    exp.get("summary", "")[:200],
+                ]
+            ).strip()
+            if seg:
+                parts.append(seg)
+        else:
+            parts.append(str(exp))
+
+    if not parts:
+        parts.append(cv.get("full_name", ""))
+
+    return "\n".join(parts)
 
 
-# ============================
-# FIX: Normalisation candidate object
-# ============================
-def normalize_candidate(candidate_dict):
+def job_to_text_for_embedding(job: dict) -> str:
+    """
+    Construit un texte de job pour l'embedding.
+    """
+    parts = []
+    if job.get("title"):
+        parts.append(job["title"])
+    if job.get("company"):
+        parts.append(job["company"])
+    if job.get("description_text"):
+        parts.append(job["description_text"])
 
-    class CandidateObj:
+    req = job.get("skills_required") or []
+    if req:
+        parts.append("Required: " + ", ".join(req))
+
+    nice = job.get("skills_nice") or []
+    if nice:
+        parts.append("Nice: " + ", ".join(nice))
+
+    return "\n".join(parts)
+
+
+# ======================================================
+# NORMALISATION CANDIDAT POUR LLM
+# ======================================================
+def normalize_candidate(d: dict):
+    """
+    Convertit un dict Mongo en petit objet avec les bons attributs
+    pour le LLM (full_name, summary, skills, experiences).
+    """
+
+    class Obj:
         pass
 
-    c = CandidateObj()
-
-    # copy dict → object
-    for k, v in candidate_dict.items():
+    c = Obj()
+    for k, v in d.items():
         setattr(c, k, v)
 
-    # 🔥 FIX PRINCIPAL
-    if hasattr(c, "skills_detected"):
-        pass
-    elif hasattr(c, "skills"):
-        c.skills_detected = c.skills
-    else:
-        c.skills_detected = []
-
-    # 🔥 rendre robuste
-    if not hasattr(c, "experiences"):
-        c.experiences = []
-
-    if not hasattr(c, "summary"):
-        c.summary = ""
-
-    if not hasattr(c, "full_name"):
-        c.full_name = ""
+    c.skills = d.get("skills", []) or d.get("skills_detected", [])
+    c.experiences = d.get("experiences", [])
+    c.summary = d.get("summary", "")
+    c.full_name = d.get("full_name", "")
 
     return c
 
 
-# ============================
-# TEST MATCHING
-# ============================
-@app.get("/test_matching")
-def test_matching():
-
-    jobs = load_jobs(limit=20)
-    if not jobs:
-        return {"status": "ERROR", "detail": "No jobs in DB"}
-
-    candidate_dict = load_last_candidate()
-    if not candidate_dict:
-        return {"status": "ERROR", "detail": "No candidate in DB"}
-
-    # 🔥 always normalize
-    candidate = normalize_candidate(candidate_dict)
-
+# ======================================================
+# TEST CV EXTRACTION
+# ======================================================
+@app.post("/test_extract")
+async def test_extract(file: UploadFile = File(...)):
     try:
-        matches = match_candidate_to_jobs(candidate, jobs)
-        return {"status": "OK", "matches": matches}
+        text = extract_text_from_pdf(file)
+        cv = extract_cv_data(text)
+        return {
+            "status": "OK",
+            "candidate": clean_mongo(cv),
+            "raw": json.dumps(cv, ensure_ascii=False, indent=2),
+        }
     except Exception as e:
         return {"status": "ERROR", "detail": str(e)}
 
 
-# ============================
-# WORKFLOW COMPLET
-# ============================
+# ======================================================
+# TEST MATCHING (DEBUG)
+# ======================================================
+@app.get("/test_matching")
+def test_matching():
+    """
+    Teste le pipeline de matching sur le dernier candidat en DB.
+    Renvoie déjà les jobs complets + score.
+    """
+    cand = load_last_candidate()
+    if not cand:
+        return {"status": "ERROR", "detail": "No candidate in DB"}
+
+    # 1) Embedding du candidat
+    emb_text = cv_to_text_for_embedding(cand)
+    cv_emb = embed_text(emb_text)
+
+    # 2) Recherche des jobs proches par embeddings
+    jobs = find_top_jobs_by_embedding(cv_emb, top_k=30)
+    if not jobs:
+        jobs = load_jobs(limit=30)
+
+    # 3) Re-ranking via LLM
+    candidate_obj = normalize_candidate(cand)
+    ranking = match_candidate_to_jobs(candidate_obj, jobs)
+
+    full_matches = []
+
+    # Remap job_index -> job réel
+    for r in ranking:
+        try:
+            idx = int(r.get("job_index", 0)) - 1  # LLM renvoie 1-based
+            if 0 <= idx < len(jobs):
+                job = jobs[idx].copy()
+                job = clean_mongo(job)
+                job["score"] = r.get("score")
+                full_matches.append(job)
+        except Exception:
+            continue
+
+    # Fallback : si aucun match exploitable, renvoyer 20 premiers jobs
+    # en utilisant la similarité embedding comme score
+    if not full_matches and jobs:
+        for job in jobs[:20]:
+            j = clean_mongo(job)
+            sim = job.get("similarity")
+            try:
+                j["score"] = float(sim) if sim is not None else 0.0
+            except Exception:
+                j["score"] = 0.0
+            full_matches.append(j)
+
+    # Tri par score décroissant si possible
+    def sort_key(j):
+        s = j.get("score")
+        try:
+            return float(s) if s is not None else 0.0
+        except Exception:
+            return 0.0
+
+    full_matches = sorted(full_matches, key=sort_key, reverse=True)
+
+    return {
+        "status": "OK",
+        "candidate": clean_mongo(cand),
+        "matches": full_matches,
+    }
+
+
+# ======================================================
+# FULL WORKFLOW — UPLOAD CV
+# ======================================================
 @app.post("/upload_cv")
 async def upload_cv(
     file: UploadFile = File(...),
-    full_name: str = Form(...)
+    full_name: str = Form(""),
 ):
+    """
+    1) PDF -> texte
+    2) Extraction structurée via LLM
+    3) Sauvegarde en DB
+    4) Embedding + recherche des jobs proches
+    5) Re-ranking via LLM
+    6) Retourne les jobs complets (titre, company, url, description_text, score)
+    """
     try:
+        # 1) PDF -> texte
         text = extract_text_from_pdf(file)
-        cv_data = extract_cv_data(text)
-        cv_data["full_name"] = full_name
 
-        save_candidate(cv_data)
+        # 2) Extraction LLM
+        cv = extract_cv_data(text)
 
-        jobs = load_jobs(limit=50)
+        if full_name:
+            cv["full_name"] = full_name
 
-        candidate = normalize_candidate(cv_data)
+        # 3) Sauvegarde candidat
+        save_candidate(cv)
 
-        matches = match_candidate_to_jobs(candidate, jobs)
+        # 4) Embedding + recherche de jobs
+        emb_text = cv_to_text_for_embedding(cv)
+        cv_emb = embed_text(emb_text)
 
-        return {"candidate": cv_data, "matches": matches}
+        jobs = find_top_jobs_by_embedding(cv_emb, top_k=50)
+        if not jobs:
+            jobs = load_jobs(limit=50)
+
+        # 5) Re-ranking LLM
+        candidate_obj = normalize_candidate(cv)
+        ranking = match_candidate_to_jobs(candidate_obj, jobs)
+
+        full_matches = []
+
+        for r in ranking:
+            try:
+                idx = int(r.get("job_index", 0)) - 1  # 1-based -> 0-based
+                if 0 <= idx < len(jobs):
+                    job = jobs[idx].copy()
+                    job = clean_mongo(job)
+                    job["score"] = r.get("score")
+                    full_matches.append(job)
+            except Exception:
+                continue
+
+        # Nettoyage des scores en float si possible
+        cleaned = []
+        for j in full_matches:
+            s = j.get("score")
+            try:
+                if s is None:
+                    cleaned.append(j)
+                else:
+                    j["score"] = float(s)
+                    cleaned.append(j)
+            except Exception:
+                continue
+        full_matches = cleaned
+
+        # 6) Fallback si aucune match LLM : renvoyer un minimum de jobs
+        # en utilisant la similarité embedding comme score
+        if not full_matches and jobs:
+            for job in jobs[:20]:
+                j = clean_mongo(job)
+                sim = job.get("similarity")
+                try:
+                    j["score"] = float(sim) if sim is not None else 0.0
+                except Exception:
+                    j["score"] = 0.0
+                full_matches.append(j)
+
+        # Tri par score décroissant
+        def sort_key(j):
+            s = j.get("score")
+            try:
+                return float(s) if s is not None else 0.0
+            except Exception:
+                return 0.0
+
+        full_matches = sorted(full_matches, key=sort_key, reverse=True)
+
+        return {
+            "candidate": clean_mongo(cv),
+            "matches": full_matches,
+        }
 
     except Exception as e:
-        return {"status": "ERROR", "detail": str(e)}
+        return {
+            "status": "ERROR",
+            "detail": str(e),
+            "candidate": {
+                "full_name": full_name,
+                "summary": "",
+                "skills": [],
+                "languages": [],
+                "experiences": [],
+                "education": [],
+            },
+            "matches": [],
+        }
 
 
-# ============================
-# JOB INGESTION FOR AIRFLOW
-# ============================
+# ======================================================
+# INGESTION D'UNE OFFRE (utilisé par le script normalize)
+# ======================================================
 @app.post("/jobs/ingest")
 def ingest_job(job: JobOffer):
-    """
-    Airflow calls this to insert normalized job offers into MongoDB.
-    """
-    try:
-        save_job(job.dict())
-        return {"status": "OK", "inserted": True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    job_dict = job.dict()
+
+    emb_text = job_to_text_for_embedding(job_dict)
+    job_dict["embedding"] = embed_text(emb_text)
+
+    save_job(job_dict)
+    return {"status": "OK", "inserted": True}
 
 
-# ============================
-# DIRECT LLM TEST (DEBUG MATCHING)
-# ============================
+# ======================================================
+# TEST LLM DIRECT (debug)
+# ======================================================
 @app.get("/test_llm_direct")
 def test_llm_direct():
-    """
-    Sends a simple prompt to the LLM to verify JSON output.
-    """
-    from app.llm.matcher_openrouter import call_llm
-
     system_prompt = "You are a job-matching AI. Return JSON only."
+
     user_prompt = """
 Candidate:
 Skills = ["Python", "AWS", "Airflow"]
@@ -199,10 +390,17 @@ Return ONLY JSON:
 ]
 """
 
-    response = call_llm(system_prompt, user_prompt)
+    result = call_openrouter(
+        model="qwen/qwen-2.5-7b-instruct",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=100,
+    )
 
     try:
-        parsed = json.loads(response)
-        return {"status": "OK", "raw": response, "parsed": parsed}
-    except:
-        return {"status": "RAW_ONLY", "raw": response}
+        parsed = json.loads(result)
+        return {"status": "OK", "raw": result, "parsed": parsed}
+    except Exception:
+        return {"status": "RAW_ONLY", "raw": result}
