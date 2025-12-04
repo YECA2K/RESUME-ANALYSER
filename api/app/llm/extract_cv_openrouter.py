@@ -6,8 +6,8 @@ MODEL = "qwen/qwen-2.5-7b-instruct"
 
 def extract_cv_data(text: str) -> dict:
     """
-    Utilise OpenRouter pour extraire un CV structuré depuis du texte brut.
-    On force un schéma JSON très précis.
+    Extract a structured CV from raw text using OpenRouter.
+    Deterministic + robust JSON parsing.
     """
 
     prompt = f"""
@@ -54,9 +54,15 @@ TEXTE DU CV :
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1800,
+        temperature=0.0,
+        top_p=1.0,
+        extra={
+            # helps keep output consistent
+            "frequency_penalty": 0,
+            "presence_penalty": 0,
+        },
     )
 
-    # Parsing JSON robuste
     def _empty():
         return {
             "full_name": "",
@@ -67,23 +73,40 @@ TEXTE DU CV :
             "education": [],
         }
 
+    # Direct JSON parse
     try:
         data = json.loads(raw)
-        if not isinstance(data, dict):
-            return _empty()
-        # s'assurer des clés
-        base = _empty()
-        base.update({k: v for k, v in data.items() if k in base})
-        return base
     except Exception:
-        # tentative de rescue quand le modèle met du texte autour
+        # Rescue: extract first {...} block
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start < 0 or end <= start:
+            return _empty()
         try:
-            start = raw.find("{")
-            end = raw.rfind("}") + 1
-            if start >= 0 and end > start:
-                data = json.loads(raw[start:end])
-                base = _empty()
-                base.update({k: v for k, v in data.items() if k in base})
-                return base
+            data = json.loads(raw[start:end])
         except Exception:
             return _empty()
+
+    if not isinstance(data, dict):
+        return _empty()
+
+    base = _empty()
+    for k in base.keys():
+        if k in data:
+            base[k] = data[k]
+
+    # type safety
+    if not isinstance(base["skills"], list):
+        base["skills"] = []
+    if not isinstance(base["languages"], list):
+        base["languages"] = []
+    if not isinstance(base["experiences"], list):
+        base["experiences"] = []
+    if not isinstance(base["education"], list):
+        base["education"] = []
+
+    # ensure strings
+    base["full_name"] = base["full_name"] if isinstance(base["full_name"], str) else ""
+    base["summary"] = base["summary"] if isinstance(base["summary"], str) else ""
+
+    return base

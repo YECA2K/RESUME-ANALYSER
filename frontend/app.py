@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 import requests
@@ -9,20 +9,34 @@ from pymongo import MongoClient
 import fitz  # PyMuPDF
 
 
-# -------------------------------------------------------
-# SETTINGS
-# -------------------------------------------------------
+# ======================================================
+# CONFIG
+# ======================================================
 st.set_page_config(
-    page_title="JobScraper ETL",
+    page_title="Intelligent Job Finder",
     page_icon="🧠",
     layout="wide",
 )
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
-# -------------------------------------------------------
-# CSS & DARK MODE
-# -------------------------------------------------------
+AIRFLOW_API_URL = os.getenv("AIRFLOW_API_URL", "http://airflow-webserver:8080/api/v1")
+AIRFLOW_USER = os.getenv("AIRFLOW_USER", "admin")
+AIRFLOW_PASSWORD = os.getenv("AIRFLOW_PASSWORD", "admin")
+
+DAG_ID = os.getenv("AIRFLOW_DAG_ID", "jobs_jobspy_daily")
+
+AUTO_REFRESH_SECONDS = 5  # ✅ fixed refresh interval (no user setting)
+
+# Mongo
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongo:27017")
+MONGO_DB = os.getenv("MONGO_DB", "matcher")
+MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "jobs")
+
+
+# ======================================================
+# CSS + DARK MODE
+# ======================================================
 st.markdown(
     """
 <style>
@@ -31,12 +45,27 @@ st.markdown(
 
 .stButton>button {
     border-radius: 10px;
-    font-weight: bold;
+    font-weight: 700;
     background-color: #4B77BE;
     color: white;
     padding: 0.5em 1em;
 }
+
 .metric { font-size: 24px !important; font-weight: bold !important; }
+
+.small-muted { opacity: 0.7; font-size: 0.9rem; }
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.55rem;
+    border-radius: 14px;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+.badge-running { background: #FFF3CD; color: #856404; }
+.badge-success { background: #D4EDDA; color: #155724; }
+.badge-failed  { background: #F8D7DA; color: #721C24; }
+.badge-queued  { background: #D1ECF1; color: #0C5460; }
+.badge-other   { background: #E2E3E5; color: #383D41; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -69,32 +98,39 @@ st.markdown(
     color: {text_color};
 }}
 .stButton>button {{
-    border-radius: 10px;
-    font-weight: bold;
     background-color: {btn_bg};
     color: {btn_color};
-    padding: 0.5em 1em;
 }}
-.metric {{ font-size: 24px !important; font-weight: bold !important; }}
-.stDataFrame div.row_widget {{ color: {text_color}; }}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# -------------------------------------------------------
+
+# ======================================================
 # LOGIN
-# -------------------------------------------------------
+# ======================================================
 def login():
     st.sidebar.title("🔐 Connexion")
     user = st.sidebar.text_input("Utilisateur")
     password = st.sidebar.text_input("Mot de passe", type="password")
 
+    st.markdown(
+        """
+        <div style="margin-top: 60px; text-align:center;">
+            <img src="https://cdn-icons-png.flaticon.com/512/3135/3135670.png" style="width:120px;">
+            <h2 style="margin: 8px 0 0 0;">Intelligent Job Finder</h2>
+            <div class="small-muted">By Idriss EL GAZRI & Yassine CHETOUANI</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     if st.sidebar.button("Se connecter"):
         if user == "admin" and password == "1234":
             st.session_state["logged"] = True
             st.sidebar.success("Connexion réussie")
-            time.sleep(0.5)
+            time.sleep(0.4)
             st.rerun()
         else:
             st.sidebar.error("Identifiants incorrects")
@@ -107,13 +143,10 @@ if not st.session_state["logged"]:
     login()
     st.stop()
 
-# -------------------------------------------------------
-# DB CONNECTION
-# -------------------------------------------------------
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongo:27017")
-MONGO_DB = os.getenv("MONGO_DB", "matcher")
-MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "jobs")
 
+# ======================================================
+# DB
+# ======================================================
 client = MongoClient(MONGO_URI)
 db = client[MONGO_DB]
 collection = db[MONGO_COLLECTION]
@@ -128,32 +161,79 @@ def load_data() -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def run_scraping():
-    time.sleep(1)
-    return "Scraping lancé avec succès ✔️"
+# ======================================================
+# AIRFLOW HELPERS
+# ======================================================
+def airflow_headers():
+    return {"Content-Type": "application/json"}
 
 
-def run_etl():
-    time.sleep(1)
-    return "Pipeline ETL exécuté ✔️"
+def airflow_auth():
+    return (AIRFLOW_USER, AIRFLOW_PASSWORD)
 
 
-# -------------------------------------------------------
-# SIDEBAR NAV
-# -------------------------------------------------------
+def airflow_get(path: str, params=None, timeout=10):
+    url = f"{AIRFLOW_API_URL.rstrip('/')}/{path.lstrip('/')}"
+    r = requests.get(url, params=params, auth=airflow_auth(), headers=airflow_headers(), timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
+
+def airflow_post(path: str, payload=None, timeout=10):
+    url = f"{AIRFLOW_API_URL.rstrip('/')}/{path.lstrip('/')}"
+    r = requests.post(url, json=payload or {}, auth=airflow_auth(), headers=airflow_headers(), timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
+
+def trigger_dag(dag_id: str):
+    # Airflow 2 REST: POST /dags/{dag_id}/dagRuns
+    # payload may include conf and dag_run_id
+    payload = {}  # keep simple
+    return airflow_post(f"/dags/{dag_id}/dagRuns", payload=payload, timeout=15)
+
+
+def list_recent_dagruns(dag_id: str, limit: int = 5):
+    # GET /dags/{dag_id}/dagRuns?order_by=-execution_date&limit=5
+    return airflow_get(f"/dags/{dag_id}/dagRuns", params={"order_by": "-execution_date", "limit": limit}, timeout=10)
+
+
+def get_task_instances(dag_id: str, dag_run_id: str):
+    # GET /dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances
+    return airflow_get(f"/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances", timeout=10)
+
+
+def badge_html(state: str) -> str:
+    s = (state or "").lower()
+    if s == "running":
+        cls = "badge-running"
+    elif s in ("success", "completed"):
+        cls = "badge-success"
+    elif s in ("failed",):
+        cls = "badge-failed"
+    elif s in ("queued", "scheduled"):
+        cls = "badge-queued"
+    else:
+        cls = "badge-other"
+    label = state or "unknown"
+    return f'<span class="badge {cls}">{label}</span>'
+
+
+# ======================================================
+# NAV
+# ======================================================
 st.sidebar.title("⚙️ Navigation")
 page = st.sidebar.radio(
     "Aller à :",
-    ["🏠 Dashboard", "📂 Analyse CV", "📜 Logs Pipeline", "📄 Offres"],
+    ["🏠 Dashboard", "📂 Analyse CV", "⚡ Pipeline Airflow", "📄 Offres"],
 )
 st.sidebar.markdown("---")
-st.sidebar.info("Projet JobScraper ETL – Yassine & Idriss")
+st.sidebar.info("Intelligent Job Finder – Yassine & Idriss")
 
-# -------------------------------------------------------
+
+# ======================================================
 # PAGES
-# -------------------------------------------------------
-
-# ---------------------- DASHBOARD ----------------------
+# ======================================================
 if page == "🏠 Dashboard":
     st.title("📊 Dashboard – Système ETL d'offres d'emploi")
 
@@ -164,16 +244,13 @@ if page == "🏠 Dashboard":
     col2.metric("Sources", df["source"].nunique() if len(df) else 0)
     col3.metric(
         "Villes",
-        df["location"]
-        .apply(lambda x: x.get("city") if isinstance(x, dict) else None)
-        .nunique()
+        df["location"].apply(lambda x: x.get("city") if isinstance(x, dict) else None).nunique()
         if len(df) and "location" in df.columns
         else 0,
     )
     col4.metric("Dernière Maj", datetime.now().strftime("%d/%m/%Y %H:%M"))
 
     st.markdown("### 🔌 Statut des services")
-
     col_status_api, col_status_db = st.columns(2)
 
     with col_status_api:
@@ -194,40 +271,35 @@ if page == "🏠 Dashboard":
             st.error(f"MongoDB : ❌ Erreur ({e})")
 
     st.markdown("### 📈 Statistiques générales")
-
     if len(df):
         colA, colB = st.columns(2)
         with colA:
             st.subheader("📍 Top 10 villes")
             if "location" in df.columns:
-                cities = df["location"].apply(
-                    lambda x: x.get("city") if isinstance(x, dict) else None
-                )
+                cities = df["location"].apply(lambda x: x.get("city") if isinstance(x, dict) else None)
                 st.bar_chart(cities.value_counts().head(10))
             else:
                 st.info("Pas de colonne 'location' exploitable.")
-
         with colB:
             st.subheader("🧷 Répartition par source")
             st.bar_chart(df["source"].value_counts())
     else:
         st.info("Aucune data dans MongoDB.")
 
-    st.markdown("---")
-    st.markdown("### ⚡ Actions rapides")
 
-    colX, colY = st.columns(2)
-    if colX.button("🚀 Lancer Scraping"):
-        st.success(run_scraping())
-
-    if colY.button("🔁 Exécuter Pipeline ETL"):
-        st.success(run_etl())
-
-# ---------------------- ANALYSE CV ----------------------
 elif page == "📂 Analyse CV":
     st.title("📂 Analyse de CV")
 
-    full_name = st.text_input("Nom complet", value="Yassine Chetouani")
+    # ✅ name state (default empty, not "Enter Your Name")
+    if "full_name" not in st.session_state:
+        st.session_state["full_name"] = ""
+
+    full_name_input = st.text_input(
+        "Nom complet",
+        value=st.session_state["full_name"],
+        placeholder="(Auto) Rempli depuis le CV après analyse — ou tape ton nom ici",
+    )
+
     uploaded_file = st.file_uploader("Upload votre CV (PDF)", type=["pdf"])
 
     if uploaded_file is not None:
@@ -237,20 +309,23 @@ elif page == "📂 Analyse CV":
         for page_pdf in pdf:
             text += page_pdf.get_text()
 
-        st.subheader("📝 Texte brut extrait du CV")
-        st.text_area("Contenu du CV", text, height=250)
+        st.subheader("📝 Texte brut extrait")
+        st.text_area("Contenu", text, height=250)
 
         st.markdown("---")
-        st.subheader("🤖 Analyse complète via l'API Resume Analyzer")
+        st.subheader("🤖 Analyse via API Resume Analyzer")
 
         if st.button("🚀 Lancer l'analyse IA"):
             try:
                 with st.spinner("Analyse du CV en cours..."):
+                    files = {"file": ("cv.pdf", pdf_bytes, "application/pdf")}
 
-                    files = {
-                        "file": ("cv.pdf", pdf_bytes, "application/pdf"),
-                    }
-                    data = {"full_name": full_name}
+                    # ✅ Only send full_name if user typed something useful
+                    data = {}
+                    if full_name_input and full_name_input.strip():
+                        fn = full_name_input.strip()
+                        if fn.lower() not in {"enter your name", "your name", "name"}:
+                            data["full_name"] = fn
 
                     response = requests.post(
                         f"{API_URL}/upload_cv",
@@ -260,25 +335,23 @@ elif page == "📂 Analyse CV":
                     )
 
                 if response.status_code != 200:
-                    st.error(
-                        f"Erreur API ({response.status_code}) : {response.text}"
-                    )
+                    st.error(f"Erreur API ({response.status_code}) : {response.text}")
                 else:
                     result = response.json()
-
                     candidate = result.get("candidate") or {}
                     matches = result.get("matches") or []
 
-                    # DEBUG (optionnel) : afficher combien de matches
+                    extracted_name = (candidate.get("full_name") or "").strip()
+                    if (not full_name_input.strip()) and extracted_name:
+                        st.session_state["full_name"] = extracted_name
+
                     st.caption(f"{len(matches)} offres reçues de l'API")
 
-                    st.markdown("### 👤 Profil candidat (normalisé)")
+                    st.markdown("### 👤 Profil candidat")
                     colA, colB = st.columns(2)
-
                     with colA:
                         st.write("**Nom complet :**", candidate.get("full_name", "N/A"))
                         st.write("**Résumé :**", candidate.get("summary", "N/A"))
-
                     with colB:
                         st.write("**Skills :**")
                         skills = candidate.get("skills") or []
@@ -289,11 +362,8 @@ elif page == "📂 Analyse CV":
                         st.write(", ".join(langs) if langs else "N/A")
 
                     st.markdown("### 🎯 Offres recommandées")
-
                     if not matches:
-                        st.info(
-                            "Aucune offre recommandée retournée par l'API (ou toutes filtrées)."
-                        )
+                        st.info("Aucune offre recommandée retournée par l'API.")
                     else:
                         for i, job in enumerate(matches, start=1):
                             title = job.get("title", "Titre inconnu")
@@ -316,31 +386,17 @@ elif page == "📂 Analyse CV":
                             with st.expander(header):
                                 if location:
                                     st.write(f"📍 {location}")
+
                                 if score is not None:
                                     try:
-                                        pct = (
-                                            float(score) * 100
-                                            if float(score) <= 1
-                                            else float(score)
-                                        )
-                                        st.write(
-                                            f"⭐ Score de matching : {pct:.1f} %"
-                                        )
+                                        pct = float(score) * 100 if float(score) <= 1 else float(score)
+                                        st.write(f"⭐ Score de matching : {pct:.1f} %")
                                     except Exception:
-                                        st.write(
-                                            f"⭐ Score de matching : {score}"
-                                        )
+                                        st.write(f"⭐ Score de matching : {score}")
 
-                                desc = (
-                                    job.get("description_text")
-                                    or job.get("description")
-                                    or ""
-                                )
+                                desc = job.get("description_text") or job.get("description") or ""
                                 if desc:
-                                    st.write(
-                                        desc[:800]
-                                        + ("..." if len(desc) > 800 else "")
-                                    )
+                                    st.write(desc[:800] + ("..." if len(desc) > 800 else ""))
 
                                 if url:
                                     st.markdown(f"[🔗 Voir l'offre]({url})")
@@ -348,17 +404,74 @@ elif page == "📂 Analyse CV":
             except Exception as e:
                 st.error(f"Erreur lors de l'appel à l'API : {e}")
 
-# ---------------------- LOGS ----------------------
-elif page == "📜 Logs Pipeline":
-    st.title("📜 Logs & Suivi du Pipeline ETL")
-    st.subheader("Dernières exécutions")
-    st.info("Fonctionnement Airflow à connecter ici.")
-    st.text_area(
-        "Logs (exemple)",
-        "Scraping Indeed → OK\nTransformation → OK\nLoad MongoDB → OK",
-    )
 
-# ---------------------- OFFRES ----------------------
+elif page == "⚡ Pipeline Airflow":
+    st.title("⚡ Lancer le pipeline Airflow (1 bouton) + suivi live")
+    st.caption(f"DAG: {DAG_ID} | Airflow API: {AIRFLOW_API_URL}")
+
+    # One button only
+    if st.button("🚀 Lancer le pipeline (Airflow DAG)"):
+        try:
+            out = trigger_dag(DAG_ID)
+            st.success("DAG déclenché ✅")
+            st.json(out)
+        except Exception as e:
+            st.error(f"Impossible de déclencher le DAG: {e}")
+
+    st.markdown("---")
+    st.subheader("📡 Suivi du DAG (live)")
+    st.caption(f"Auto-refresh: {AUTO_REFRESH_SECONDS}s")
+
+    placeholder = st.empty()
+
+    # Auto-refresh loop (fixed 5s). This keeps the page “live”.
+    # Streamlit reruns the script from top. We emulate live with sleep + rerun.
+    # We keep it lightweight: show only latest run.
+    try:
+        runs = list_recent_dagruns(DAG_ID, limit=1).get("dag_runs", [])
+        if not runs:
+            placeholder.info("Aucun DAG run trouvé.")
+        else:
+            run = runs[0]
+            dag_run_id = run.get("dag_run_id")
+            state = run.get("state")
+            start_date = run.get("start_date")
+            end_date = run.get("end_date")
+
+            with placeholder.container():
+                st.markdown(
+                    f"**Dernier run:** `{dag_run_id}`  &nbsp; {badge_html(state)}",
+                    unsafe_allow_html=True,
+                )
+                st.write(f"start: {start_date} | end: {end_date}")
+
+                # Task instances table
+                ti = get_task_instances(DAG_ID, dag_run_id).get("task_instances", [])
+                if ti:
+                    df_ti = pd.DataFrame(
+                        [
+                            {
+                                "task_id": x.get("task_id"),
+                                "state": x.get("state"),
+                                "try_number": x.get("try_number"),
+                                "start_date": x.get("start_date"),
+                                "end_date": x.get("end_date"),
+                            }
+                            for x in ti
+                        ]
+                    )
+                    st.dataframe(df_ti, use_container_width=True)
+                else:
+                    st.info("Aucune task instance pour ce run.")
+
+    except Exception as e:
+        placeholder.error(f"Erreur Airflow API: {e}")
+
+    # Fixed refresh (no slider, no checkbox)
+    time.sleep(AUTO_REFRESH_SECONDS)
+    st.rerun()
+
+
 elif page == "📄 Offres":
     st.title("📄 Offres d'emploi – Base MongoDB")
     df = load_data()
@@ -368,16 +481,13 @@ elif page == "📄 Offres":
         st.stop()
 
     if "location" in df.columns:
-        df["city"] = df["location"].apply(
-            lambda x: x.get("city") if isinstance(x, dict) else None
-        )
+        df["city"] = df["location"].apply(lambda x: x.get("city") if isinstance(x, dict) else None)
 
     with st.expander("🎛️ Filtres avancés"):
         col1, col2, col3 = st.columns(3)
+
         source = col1.selectbox("Source", ["Toutes"] + sorted(df["source"].unique()))
-        city_values = (
-            sorted(df["city"].dropna().unique()) if "city" in df.columns else []
-        )
+        city_values = sorted(df["city"].dropna().unique()) if "city" in df.columns else []
         city = col2.selectbox("Ville", ["Toutes"] + city_values)
         keyword = col3.text_input("Mot-clé (titre / description)")
 
@@ -386,12 +496,7 @@ elif page == "📄 Offres":
         if city != "Toutes" and "city" in df.columns:
             df = df[df["city"] == city]
         if keyword:
-            df = df[
-                df.apply(
-                    lambda r: keyword.lower() in str(r).lower(),
-                    axis=1,
-                )
-            ]
+            df = df[df.apply(lambda r: keyword.lower() in str(r).lower(), axis=1)]
 
     st.dataframe(df, use_container_width=True)
 

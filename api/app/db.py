@@ -1,17 +1,43 @@
 # api/app/db.py
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING
 import os
 from datetime import datetime
-from typing import List, Dict, Any
 import numpy as np
 from bson import ObjectId
-
 
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo:27017")
 DB_NAME = os.getenv("DB_NAME", "matcher")
 
+# How many jobs max we load in RAM to compute similarity (cosine)
+# With 9k jobs, you can safely set 20000
+DEFAULT_MAX_JOBS = int(os.getenv("MATCH_MAX_JOBS", "20000"))
+
 client = MongoClient(MONGO_URL)
 db = client[DB_NAME]
+
+
+# -------------------------------------------------------------------
+# INIT (indexes)
+# -------------------------------------------------------------------
+def ensure_indexes():
+    """
+    Creates helpful indexes once. Safe to call multiple times.
+    - url unique sparse: prevents duplicating same job daily
+    """
+    try:
+        db.jobs.create_index([("url", ASCENDING)], unique=True, sparse=True)
+    except Exception:
+        # If duplicates already exist, Mongo may refuse unique index creation.
+        # You can dedupe manually in Mongo then retry.
+        pass
+
+    try:
+        db.candidates.create_index([("created_at", ASCENDING)])
+    except Exception:
+        pass
+
+
+ensure_indexes()
 
 
 # -------------------------------------------------------------------
@@ -55,8 +81,23 @@ def load_last_candidate():
 # JOB STORAGE
 # -------------------------------------------------------------------
 def save_job(job: dict):
+    """
+    UPSERT job to avoid duplicates across daily scraping.
+    Prefer URL as unique key, else fallback to (title,company,source).
+    """
     job["ingested_at"] = datetime.utcnow()
-    db.jobs.insert_one(job)
+
+    url = (job.get("url") or "").strip()
+    if url:
+        key = {"url": url}
+    else:
+        key = {
+            "title": (job.get("title") or "").strip(),
+            "company": (job.get("company") or "").strip(),
+            "source": (job.get("source") or "").strip(),
+        }
+
+    db.jobs.update_one(key, {"$set": job}, upsert=True)
 
 
 def load_jobs(limit=50):
@@ -66,10 +107,7 @@ def load_jobs(limit=50):
 
 def load_jobs_with_embeddings(max_jobs=2000):
     docs = list(
-        db.jobs.find(
-            {"embedding": {"$exists": True}},
-            limit=max_jobs,
-        )
+        db.jobs.find({"embedding": {"$exists": True}}, limit=max_jobs)
     )
     return clean_mongo(docs)
 
@@ -77,29 +115,28 @@ def load_jobs_with_embeddings(max_jobs=2000):
 # -------------------------------------------------------------------
 # SIMILARITY SEARCH
 # -------------------------------------------------------------------
-def find_top_jobs_by_embedding(query_emb, top_k=50, max_jobs=2000):
+def find_top_jobs_by_embedding(query_emb, top_k=50, max_jobs=None):
     """
-    Retourne les jobs les plus proches du CV sur la base des embeddings.
-    Ajoute un champ 'similarity' dans chaque job.
-    - query_emb : embedding du CV (list/np.array)
-    - top_k : nombre de jobs à renvoyer
-    - max_jobs : nombre max de jobs à charger pour le calcul
+    Returns top_k jobs closest to CV embedding (cosine similarity).
+    Adds 'similarity' float field to each job.
+
+    - query_emb: list/np.array
+    - top_k: number to return
+    - max_jobs: max jobs loaded to compute similarity (default env MATCH_MAX_JOBS)
     """
     if query_emb is None:
         return []
 
-    # 1) Récupérer les jobs qui ont un embedding
-    jobs = list(
-        db.jobs.find(
-            {"embedding": {"$exists": True}},
-            limit=max_jobs,
-        )
-    )
+    if max_jobs is None:
+        max_jobs = DEFAULT_MAX_JOBS
 
+    # Pull jobs with embeddings
+    jobs = list(
+        db.jobs.find({"embedding": {"$exists": True}}, limit=int(max_jobs))
+    )
     if not jobs:
         return []
 
-    # 2) Construire la matrice des embeddings
     valid_jobs = []
     matrix = []
 
@@ -112,31 +149,27 @@ def find_top_jobs_by_embedding(query_emb, top_k=50, max_jobs=2000):
     if not matrix:
         return []
 
-    M = np.asarray(matrix, dtype=float)  # shape (N, D)
-    q = np.asarray(query_emb, dtype=float)  # shape (D,)
+    M = np.asarray(matrix, dtype=float)        # (N, D)
+    q = np.asarray(query_emb, dtype=float)     # (D,)
 
-    # Sécuriser la forme
     if q.ndim != 1:
         q = q.flatten()
 
-    # 3) Normalisation pour cosine similarity
+    # cosine similarity
     M_norm = np.linalg.norm(M, axis=1, keepdims=True) + 1e-8
     q_norm = np.linalg.norm(q) + 1e-8
-
     M_unit = M / M_norm
     q_unit = q / q_norm
 
-    # sims[i] = cos(M[i], q)
-    sims = np.dot(M_unit, q_unit)  # shape (N,)
+    sims = np.dot(M_unit, q_unit)  # (N,)
 
-    # 4) Prendre les top_k meilleurs
     top_k = min(int(top_k), len(valid_jobs))
-    indices = np.argsort(-sims)[:top_k]  # ordre décroissant
+    indices = np.argsort(-sims)[:top_k]
 
     results = []
     for idx in indices:
         j = valid_jobs[int(idx)].copy()
-        j["similarity"] = float(sims[int(idx)])  # score du matching embedding
+        j["similarity"] = float(sims[int(idx)])
         results.append(j)
 
     return results

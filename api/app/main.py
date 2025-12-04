@@ -1,6 +1,9 @@
 import os
 import json
+import re
 import fitz  # PyMuPDF
+from typing import Dict, Any, List, Tuple
+
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -32,7 +35,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # ======================================================
 # HEALTH
 # ======================================================
@@ -40,9 +42,8 @@ app.add_middleware(
 def health():
     return {"status": "OK"}
 
-
 # ======================================================
-# TEST OPENROUTER (simple)
+# TEST OPENROUTER
 # ======================================================
 @app.get("/test_openrouter")
 def test_openrouter():
@@ -62,32 +63,72 @@ def test_openrouter():
 # ======================================================
 def extract_text_from_pdf(file: UploadFile) -> str:
     """
-    Lit le PDF en mémoire et renvoie le texte brut.
+    Reads PDF in memory and returns raw text.
     """
     try:
-        pdf = fitz.open(stream=file.file.read(), filetype="pdf")
+        pdf_bytes = file.file.read()
+        pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
         text = "".join(page.get_text() for page in pdf)
         pdf.close()
-        return text
+        return text or ""
     except Exception as e:
         raise Exception(f"PDF extraction failed: {e}")
 
 
 # ======================================================
-# TEXT BUILDERS POUR EMBEDDINGS
+# CV / NOT-CV GATE (prevents invoices / PC configs)
+# ======================================================
+def looks_like_cv(text: str) -> bool:
+    """
+    Fast heuristic gate to reject non-CV documents.
+    """
+    t = (text or "").lower()
+
+    # too small => not a CV
+    if len(t) < 600:
+        return False
+
+    cv_keywords = [
+        "cv", "curriculum", "profil", "profile",
+        "expérience", "experience", "compétences", "competences",
+        "formation", "éducation", "education",
+        "projet", "projects", "certification",
+        "linkedin", "github"
+    ]
+    invoice_keywords = [
+        "prix", "qty", "total", "sous-total", "remise", "reduction",
+        "mad", "tva", "facture", "invoice", "produit", "adresse",
+        "subtotal", "amount", "order"
+    ]
+
+    cv_hits = sum(kw in t for kw in cv_keywords)
+    inv_hits = sum(kw in t for kw in invoice_keywords)
+
+    money_tokens = len(re.findall(r"\b\d+([.,]\d+)?\s*(mad|€|eur|\$)\b", t))
+    table_tokens = len(re.findall(r"\b(qty|total|prix|produit)\b", t))
+
+    # strong invoice signal
+    if inv_hits >= 3 and (money_tokens >= 2 or table_tokens >= 3):
+        return False
+
+    return cv_hits >= 2
+
+
+# ======================================================
+# TEXT BUILDERS FOR EMBEDDINGS
 # ======================================================
 def cv_to_text_for_embedding(cv: dict) -> str:
     """
-    Construit un texte compact (summary + skills + expériences) pour l'embedding.
+    Build compact text for embedding: summary + skills + experiences.
     """
     parts = []
 
     if cv.get("summary"):
-        parts.append(cv["summary"])
+        parts.append(str(cv["summary"]))
 
     skills = cv.get("skills") or []
     if skills:
-        parts.append("Skills: " + ", ".join(skills))
+        parts.append("Skills: " + ", ".join([str(s) for s in skills]))
 
     for exp in cv.get("experiences", []):
         if isinstance(exp, dict):
@@ -96,7 +137,7 @@ def cv_to_text_for_embedding(cv: dict) -> str:
                     exp.get("title", "") or exp.get("position", ""),
                     exp.get("company", ""),
                     exp.get("period", "") or exp.get("years", ""),
-                    exp.get("summary", "")[:200],
+                    (exp.get("summary", "") or "")[:220],
                 ]
             ).strip()
             if seg:
@@ -111,9 +152,6 @@ def cv_to_text_for_embedding(cv: dict) -> str:
 
 
 def job_to_text_for_embedding(job: dict) -> str:
-    """
-    Construit un texte de job pour l'embedding.
-    """
     parts = []
     if job.get("title"):
         parts.append(job["title"])
@@ -134,14 +172,9 @@ def job_to_text_for_embedding(job: dict) -> str:
 
 
 # ======================================================
-# NORMALISATION CANDIDAT POUR LLM
+# NORMALIZE CANDIDATE FOR LLM
 # ======================================================
 def normalize_candidate(d: dict):
-    """
-    Convertit un dict Mongo en petit objet avec les bons attributs
-    pour le LLM (full_name, summary, skills, experiences).
-    """
-
     class Obj:
         pass
 
@@ -151,10 +184,35 @@ def normalize_candidate(d: dict):
 
     c.skills = d.get("skills", []) or d.get("skills_detected", [])
     c.experiences = d.get("experiences", [])
-    c.summary = d.get("summary", "")
-    c.full_name = d.get("full_name", "")
+    c.summary = d.get("summary", "") or ""
+    c.full_name = d.get("full_name", "") or ""
 
     return c
+
+
+# ======================================================
+# DEDUPE JOBS (prevents repeated offers in output)
+# ======================================================
+def job_key(job: Dict[str, Any]) -> Tuple[str, str, str]:
+    url = (job.get("url") or "").strip().lower()
+    if url:
+        return (url, "", "")
+    title = (job.get("title") or "").strip().lower()
+    company = (job.get("company") or "").strip().lower()
+    source = (job.get("source") or "").strip().lower()
+    return (title, company, source)
+
+
+def dedupe_jobs(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen = set()
+    out = []
+    for j in jobs:
+        k = job_key(j)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(j)
+    return out
 
 
 # ======================================================
@@ -164,6 +222,22 @@ def normalize_candidate(d: dict):
 async def test_extract(file: UploadFile = File(...)):
     try:
         text = extract_text_from_pdf(file)
+
+        if not looks_like_cv(text):
+            return {
+                "status": "ERROR",
+                "detail": "Document does not look like a CV.",
+                "candidate": {
+                    "full_name": "",
+                    "summary": "",
+                    "skills": [],
+                    "languages": [],
+                    "experiences": [],
+                    "education": [],
+                },
+                "raw": "",
+            }
+
         cv = extract_cv_data(text)
         return {
             "status": "OK",
@@ -179,68 +253,49 @@ async def test_extract(file: UploadFile = File(...)):
 # ======================================================
 @app.get("/test_matching")
 def test_matching():
-    """
-    Teste le pipeline de matching sur le dernier candidat en DB.
-    Renvoie déjà les jobs complets + score.
-    """
     cand = load_last_candidate()
     if not cand:
         return {"status": "ERROR", "detail": "No candidate in DB"}
 
-    # 1) Embedding du candidat
     emb_text = cv_to_text_for_embedding(cand)
     cv_emb = embed_text(emb_text)
 
-    # 2) Recherche des jobs proches par embeddings
-    jobs = find_top_jobs_by_embedding(cv_emb, top_k=30)
+    jobs = find_top_jobs_by_embedding(cv_emb, top_k=80, max_jobs=int(os.getenv("MATCH_MAX_JOBS", "20000")))
     if not jobs:
-        jobs = load_jobs(limit=30)
+        jobs = load_jobs(limit=80)
 
-    # 3) Re-ranking via LLM
+    jobs = dedupe_jobs(jobs)
+
+    # Rerank on a capped, stable pool
+    rerank_pool = jobs[:40]
+
     candidate_obj = normalize_candidate(cand)
-    ranking = match_candidate_to_jobs(candidate_obj, jobs)
+    ranking = match_candidate_to_jobs(candidate_obj, rerank_pool)
 
     full_matches = []
-
-    # Remap job_index -> job réel
     for r in ranking:
         try:
-            idx = int(r.get("job_index", 0)) - 1  # LLM renvoie 1-based
-            if 0 <= idx < len(jobs):
-                job = jobs[idx].copy()
+            idx = int(r.get("job_index", 0)) - 1
+            if 0 <= idx < len(rerank_pool):
+                job = rerank_pool[idx].copy()
                 job = clean_mongo(job)
-                job["score"] = r.get("score")
+                job["score"] = float(r.get("score"))
                 full_matches.append(job)
         except Exception:
             continue
 
-    # Fallback : si aucun match exploitable, renvoyer 20 premiers jobs
-    # en utilisant la similarité embedding comme score
+    # fallback with embedding similarity
     if not full_matches and jobs:
         for job in jobs[:20]:
             j = clean_mongo(job)
-            sim = job.get("similarity")
-            try:
-                j["score"] = float(sim) if sim is not None else 0.0
-            except Exception:
-                j["score"] = 0.0
+            j["score"] = float(job.get("similarity") or 0.0)
             full_matches.append(j)
 
-    # Tri par score décroissant si possible
-    def sort_key(j):
-        s = j.get("score")
-        try:
-            return float(s) if s is not None else 0.0
-        except Exception:
-            return 0.0
+    full_matches = dedupe_jobs(full_matches)
 
-    full_matches = sorted(full_matches, key=sort_key, reverse=True)
+    full_matches = sorted(full_matches, key=lambda x: float(x.get("score") or 0.0), reverse=True)
 
-    return {
-        "status": "OK",
-        "candidate": clean_mongo(cand),
-        "matches": full_matches,
-    }
+    return {"status": "OK", "candidate": clean_mongo(cand), "matches": full_matches}
 
 
 # ======================================================
@@ -252,86 +307,99 @@ async def upload_cv(
     full_name: str = Form(""),
 ):
     """
-    1) PDF -> texte
-    2) Extraction structurée via LLM
-    3) Sauvegarde en DB
-    4) Embedding + recherche des jobs proches
-    5) Re-ranking via LLM
-    6) Retourne les jobs complets (titre, company, url, description_text, score)
+    1) PDF -> text
+    2) CV gate (reject invoices / non-CV)
+    3) Extract structured CV via LLM
+    4) Save candidate
+    5) CV embedding -> retrieve closest jobs by embedding (from ALL jobs with embeddings)
+    6) Deduplicate + Stable rerank pool
+    7) LLM rerank returns scores
+    8) Return full job docs with non-null score
     """
     try:
-        # 1) PDF -> texte
+        # 1) PDF -> text
         text = extract_text_from_pdf(file)
 
-        # 2) Extraction LLM
+        # 2) Reject non-CV
+        if not looks_like_cv(text):
+            return {
+                "status": "ERROR",
+                "detail": "Document does not look like a CV.",
+                "candidate": {
+                    "full_name": full_name,
+                    "summary": "",
+                    "skills": [],
+                    "languages": [],
+                    "experiences": [],
+                    "education": [],
+                },
+                "matches": [],
+            }
+
+        # 3) Extract CV
         cv = extract_cv_data(text)
+        if full_name and full_name.strip():
+            fn = full_name.strip()
+            if fn.lower() not in {"enter your name", "your name", "name"}:
+                cv["full_name"] = fn
 
-        if full_name:
-            cv["full_name"] = full_name
-
-        # 3) Sauvegarde candidat
+        # 4) Save candidate
         save_candidate(cv)
 
-        # 4) Embedding + recherche de jobs
+        # 5) Embedding -> retrieve closest jobs
         emb_text = cv_to_text_for_embedding(cv)
         cv_emb = embed_text(emb_text)
 
-        jobs = find_top_jobs_by_embedding(cv_emb, top_k=50)
+        jobs = find_top_jobs_by_embedding(
+            cv_emb,
+            top_k=120,
+            max_jobs=int(os.getenv("MATCH_MAX_JOBS", "20000")),
+        )
         if not jobs:
-            jobs = load_jobs(limit=50)
+            jobs = load_jobs(limit=120)
 
-        # 5) Re-ranking LLM
+        # 6) Deduplicate + stable rerank pool
+        jobs = dedupe_jobs(jobs)
+        rerank_pool = jobs[:40]
+
+        # 7) Rerank via LLM
         candidate_obj = normalize_candidate(cv)
-        ranking = match_candidate_to_jobs(candidate_obj, jobs)
+        ranking = match_candidate_to_jobs(candidate_obj, rerank_pool)
 
         full_matches = []
-
         for r in ranking:
             try:
-                idx = int(r.get("job_index", 0)) - 1  # 1-based -> 0-based
-                if 0 <= idx < len(jobs):
-                    job = jobs[idx].copy()
+                idx = int(r.get("job_index", 0)) - 1
+                if 0 <= idx < len(rerank_pool):
+                    job = rerank_pool[idx].copy()
                     job = clean_mongo(job)
-                    job["score"] = r.get("score")
+                    job["score"] = float(r.get("score"))
                     full_matches.append(job)
             except Exception:
                 continue
 
-        # Nettoyage des scores en float si possible
+        # 8) Fallback: embedding similarity if LLM returns nothing
+        if not full_matches and jobs:
+            for job in jobs[:20]:
+                j = clean_mongo(job)
+                j["score"] = float(job.get("similarity") or 0.0)
+                full_matches.append(j)
+
+        # Always dedupe output
+        full_matches = dedupe_jobs(full_matches)
+
+        # Ensure non-null numeric score
         cleaned = []
         for j in full_matches:
-            s = j.get("score")
             try:
-                if s is None:
-                    cleaned.append(j)
-                else:
-                    j["score"] = float(s)
-                    cleaned.append(j)
+                j["score"] = float(j.get("score") or 0.0)
+                cleaned.append(j)
             except Exception:
                 continue
         full_matches = cleaned
 
-        # 6) Fallback si aucune match LLM : renvoyer un minimum de jobs
-        # en utilisant la similarité embedding comme score
-        if not full_matches and jobs:
-            for job in jobs[:20]:
-                j = clean_mongo(job)
-                sim = job.get("similarity")
-                try:
-                    j["score"] = float(sim) if sim is not None else 0.0
-                except Exception:
-                    j["score"] = 0.0
-                full_matches.append(j)
-
-        # Tri par score décroissant
-        def sort_key(j):
-            s = j.get("score")
-            try:
-                return float(s) if s is not None else 0.0
-            except Exception:
-                return 0.0
-
-        full_matches = sorted(full_matches, key=sort_key, reverse=True)
+        # Sort by score desc
+        full_matches = sorted(full_matches, key=lambda x: float(x.get("score") or 0.0), reverse=True)
 
         return {
             "candidate": clean_mongo(cv),
@@ -355,7 +423,7 @@ async def upload_cv(
 
 
 # ======================================================
-# INGESTION D'UNE OFFRE (utilisé par le script normalize)
+# JOB INGESTION (used by normalize script)
 # ======================================================
 @app.post("/jobs/ingest")
 def ingest_job(job: JobOffer):
@@ -365,7 +433,7 @@ def ingest_job(job: JobOffer):
     job_dict["embedding"] = embed_text(emb_text)
 
     save_job(job_dict)
-    return {"status": "OK", "inserted": True}
+    return {"status": "OK", "upserted": True}
 
 
 # ======================================================
@@ -374,7 +442,6 @@ def ingest_job(job: JobOffer):
 @app.get("/test_llm_direct")
 def test_llm_direct():
     system_prompt = "You are a job-matching AI. Return JSON only."
-
     user_prompt = """
 Candidate:
 Skills = ["Python", "AWS", "Airflow"]
@@ -389,7 +456,6 @@ Return ONLY JSON:
   {"job_index": 1, "score": 0.90}
 ]
 """
-
     result = call_openrouter(
         model="qwen/qwen-2.5-7b-instruct",
         messages=[
