@@ -1,132 +1,123 @@
-RESUME-ANALYSER
+# RESUME-ANALYSER
+## Intelligent Job Search Powered by AI
 
-Recherche d’emploi intelligent basée sur l’IA
+---
 
-Présentation
+## Overview
 
-RESUME-ANALYSER est une application intelligente de recommandation d’offres d’emploi.
-Elle permet d’analyser automatiquement un CV au format PDF, d’en extraire les informations clés à l’aide de modèles de langage (LLM), puis de proposer les offres d’emploi les plus pertinentes à partir d’une base de données d’offres réelles.
+**RESUME-ANALYSER** is an intelligent job recommendation system designed to analyze resumes (CVs) in PDF format and automatically match candidates with the most relevant job offers.
 
-Le projet s’inscrit dans une approche Data / IA / Cloud, avec une architecture modulaire, scalable et déployée sur AWS.
+The application leverages **Large Language Models (LLMs)**, **vector embeddings**, and a **data-driven matching pipeline** to provide accurate and contextual job recommendations.
 
-Objectifs du projet
+The project follows a **Data / AI / Cloud** approach with a modular, scalable architecture deployed on **AWS**.
 
-Automatiser l’analyse des CV (extraction sémantique)
+---
 
-Recommander des offres pertinentes à l’aide d’embeddings vectoriels
+## Project Objectives
 
-Mettre en place un pipeline ETL automatisé pour la collecte des offres
+- Automate resume analysis using semantic extraction
+- Recommend relevant job offers using vector embeddings
+- Build an automated ETL pipeline for job data collection
+- Deploy a full cloud-based architecture
+- Apply DevOps, security, and MLOps best practices
 
-Déployer une architecture complète en environnement cloud
+---
 
-Appliquer de bonnes pratiques DevOps, sécurité et MLOps
+## Global Architecture
 
-Architecture globale
+The system is composed of the following components:
 
-Le projet repose sur les composants suivants :
+### Frontend
+- **Streamlit**
+- User interface for CV upload and results visualization
 
-Frontend : Streamlit
-Interface utilisateur pour l’upload du CV et la visualisation des résultats.
+### Backend API
+- **FastAPI**
+- Handles CV processing, embeddings generation, job matching, and REST endpoints
 
-Backend API : FastAPI
-Gestion de l’extraction, du matching, des embeddings et des endpoints REST.
+### Database
+- **MongoDB**
+- Stores analyzed CVs, job offers, and their vector representations
 
-Base de données : MongoDB
-Stockage des CV analysés, des offres d’emploi et de leurs vecteurs.
+### ETL Pipeline
+- **Apache Airflow**
+- Orchestrates scraping, normalization, vectorization, and data cleanup
 
-Pipeline ETL : Apache Airflow
-Orchestration du scraping, nettoyage, vectorisation et maintenance des données.
+### Scraping
+- **JobSpy**
+- Collects job offers from public sources (Indeed, Glassdoor, LinkedIn)
 
-Scraping : JobSpy
-Collecte des offres depuis des sources publiques (Indeed, Glassdoor, LinkedIn).
+### Deployment
+- **Docker & Docker Compose**
+- Deployed on **AWS EC2**
 
-Déploiement : Docker & Docker Compose sur AWS EC2.
+### Version Control
+- **GitHub**
 
-Versioning : GitHub.
+---
 
-Fonctionnement du système
+## System Workflow
 
-L’utilisateur téléverse un CV au format PDF.
+1. The user uploads a CV in PDF format.
+2. The PDF is converted into raw text.
+3. A Large Language Model extracts structured information:
+   - Name
+   - Skills
+   - Work experience
+   - Languages
+4. The candidate profile is transformed into a vector embedding.
+5. CV embeddings are compared with job offer embeddings.
+6. Cosine similarity is computed.
+7. A final matching score is calculated using:
+   - Vector similarity (60%)
+   - Skill overlap (10%)
+   - Domain relevance (30%)
+8. The top 20 most relevant job offers are returned to the user.
 
-Le PDF est converti en texte brut.
+---
 
-Un LLM extrait les informations structurées (nom, compétences, expériences, langues).
+## ETL Pipeline with Airflow
 
-Le profil candidat est transformé en embedding vectoriel.
+A scheduled Airflow DAG ensures that job data remains fresh and relevant:
 
-Les embeddings du CV sont comparés à ceux des offres stockées.
+- Scraping job offers via JobSpy
+- Cleaning and normalizing data
+- Generating embeddings for job descriptions
+- Removing outdated job offers
 
-La similarité cosinus est calculée.
+This pipeline runs automatically and can also be triggered manually via the Airflow UI.
 
-Un score final est généré à partir de :
+---
 
-similarité vectorielle (60 %),
+## Deployment and Security
 
-recouvrement des compétences (10 %),
+- Deployed on an **AWS EC2 (Ubuntu)** instance
+- All services are containerized using Docker
+- Orchestrated with Docker Compose
+- EC2 access secured via AWS Security Groups
+- Only required ports are exposed
+- Internal services communicate over a private Docker network
+- CV data is used strictly for academic purposes
+- Scraping is limited to public, open-source job listings
 
-correspondance du domaine métier (30 %).
+---
 
-Les 20 offres les plus pertinentes sont affichées.
+## Technologies Used
 
-Pipeline ETL (Airflow)
+- Python
+- FastAPI
+- Streamlit
+- MongoDB
+- Apache Airflow
+- JobSpy
+- Docker / Docker Compose
+- AWS EC2
+- OpenRouter (LLM access)
+- GitHub
 
-Un DAG Airflow s’exécute automatiquement (ou manuellement) pour :
+---
 
-Scraper les offres d’emploi via JobSpy
+## Quick Start
 
-Normaliser et nettoyer les données
-
-Générer les embeddings des offres
-
-Supprimer les anciennes données obsolètes
-
-Ce pipeline garantit une base d’offres à jour et exploitable pour le matching.
-
-Déploiement et sécurité
-
-Déploiement sur AWS EC2 (Ubuntu).
-
-Services conteneurisés avec Docker.
-
-Orchestration via Docker Compose.
-
-Accès EC2 sécurisé par groupes de sécurité AWS.
-
-Exposition minimale des ports nécessaires.
-
-Réseau Docker privé entre les services.
-
-Données utilisées à des fins académiques uniquement.
-
-Scraping limité à des sources publiques et open source.
-
-Technologies utilisées
-
-Python
-
-FastAPI
-
-Streamlit
-
-MongoDB
-
-Apache Airflow
-
-JobSpy
-
-Docker & Docker Compose
-
-AWS EC2
-
-OpenRouter (LLM)
-
-GitHub
-
-Lancer le projet (résumé)
+```bash
 docker compose up -d --build
-
-
-API : http://localhost:8000/docs
-
-Airflow : http://localhost:8080
- (admin / admin)
